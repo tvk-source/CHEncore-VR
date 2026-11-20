@@ -4,6 +4,7 @@
     build-assets.py --install dist/PPSA99130    lay the assets of the samples
                                                  linked in (build/ps5/samples.txt)
                                                  into the title folder's assets/
+    build-assets.py --build-dir build/ps5-vr-probe --install dist-vr-probe/PPSA98743
     build-assets.py --notices                   rewrite ps5/ASSETS.md
 
 Every asset comes from ps5/assets.json, which names its origin and licence:
@@ -30,10 +31,19 @@ from pathlib import Path
 
 PS5 = Path(__file__).resolve().parent.parent
 ROOT = PS5.parent
-BUILD = ROOT / "build" / "ps5"
+DEFAULT_BUILD = ROOT / "build" / "ps5"
+BUILD = DEFAULT_BUILD
 DOWNLOADS = BUILD / "downloads"
 GENERATED = BUILD / "generated"
 KIT = ROOT / ".deps" / "hui"
+
+
+def configure_build(build_dir):
+    """Select the CMake build that produced the title and its asset caches."""
+    global BUILD, DOWNLOADS, GENERATED
+    BUILD = Path(build_dir).resolve()
+    DOWNLOADS = BUILD / "downloads"
+    GENERATED = BUILD / "generated"
 
 
 def load_manifest():
@@ -43,7 +53,7 @@ def load_manifest():
 def linked_samples():
     listing = BUILD / "samples.txt"
     if not listing.is_file():
-        sys.exit("no build/ps5/samples.txt: build the title first (ps5/tools/build.sh)")
+        sys.exit(f"no {listing}: build the title first (ps5/tools/build.sh)")
     return [s for s in listing.read_text().strip().split(";") if s]
 
 
@@ -207,8 +217,11 @@ def write_notices():
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--install", metavar="TITLE_FOLDER")
+    parser.add_argument("--build-dir", type=Path, default=DEFAULT_BUILD,
+                        help="CMake build directory containing samples.txt and optional ui.txt")
     parser.add_argument("--notices", action="store_true")
     args = parser.parse_args()
+    configure_build(args.build_dir)
     if not args.install and not args.notices:
         parser.error("nothing to do")
     if args.notices:

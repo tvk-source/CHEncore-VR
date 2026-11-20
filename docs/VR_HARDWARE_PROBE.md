@@ -22,6 +22,8 @@ ENCORE_VR_PROBE=1 bash ps5/tools/build.sh 2>&1 | tee /tmp/encore-vr-probe-build.
 ```
 
 Build cache: `build/ps5-vr-probe`. Output: `dist-vr-probe/PPSA98743`.
+The asset staging step selects the same CMake directory as the linker (including
+its samples.txt and optional ui.txt). No normal game build is needed first.
 The packaging step retains upstream open assets and licence notices; no
 user-imported resources are needed to run this probe. The probe metadata uses
 Ghost VR's VR app/VR-only bits, without the hand tracking flag; this metadata
@@ -57,3 +59,11 @@ host tests cannot establish whether the console API imports or ABI work.
 
 Next gate: a Vulkan-generated pattern, with coherent mapped triple buffers
 and fenced GPU writes; then cinema, stereo gameplay and instruments.
+
+## First native build evidence
+On 2026-11-20 the user's native SDK compiled all 49 C/C++ objects, RADV release
+was built at 1ba9874f4786, and the PS5 native linker and SELF signer generated
+an eboot.bin (28,491,401 bytes) and engine PRX. Final asset staging failed
+because it used build/ps5 instead of build/ps5-vr-probe. The build-directory
+fix addresses that packaging failure; rerun the build to verify. No PS5
+hardware result has yet been reported.

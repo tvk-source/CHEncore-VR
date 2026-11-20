@@ -42,7 +42,7 @@ if [[ ! -f $build/build.ninja ]] || [[ $probe == ON ]]; then
 fi
 "$ninja" -C "$build" title
 app="$dist_root/$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["titleId"])' "$ps5/sce_sys/param.json")"
-python3 "$ps5/tools/build-assets.py" --install "$app"
+python3 "$ps5/tools/build-assets.py" --build-dir "$build" --install "$app"
 # Documentation-only commits do not relink the executable. Always refresh the
 # source identity so release archives cannot retain an older/dirty revision.
 python3 "$ps5/tools/stage-notices.py" "$app" "$vulkan" \
