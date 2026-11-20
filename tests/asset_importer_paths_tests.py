@@ -14,3 +14,15 @@ with tempfile.TemporaryDirectory() as temporary:
  output=root/'out'/'assets.encore-assets';assert module.prepare_output(output,data)==output and output.parent.is_dir() and not output.exists()
  assert list(game.iterdir())==[data] and not list(data.iterdir())
 print('PASS importer output validation: PC installation remains unchanged, unsafe outputs create no directories')
+
+# Source profiles must match entire sets, not a mixture of supported files.
+recipes=module.load_recipes(Path(__file__).resolve().parents[1]/'tools/asset-importer/recipes.json')
+original=recipes['source_files']
+linux=module.LINUX_SOURCE_FILES
+assert module.source_profile(original,recipes)=='original'
+assert module.source_profile(linux,recipes)=='linux-reference'
+mixed=dict(linux);mixed['resources.assets']=original['resources.assets']
+assert module.source_profile(mixed,recipes) is None
+assert module.source_profile(linux,dict(recipes,catalog='unrelated')) is None
+assert module.source_profile(dict(linux,extra='unknown'),recipes) is None
+print('PASS exact source profile matching and mixed-source rejection')

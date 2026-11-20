@@ -46,17 +46,43 @@ def prepare_output(output,game_data):
     return output
 
 
+# Alternative source container fingerprints, tied to the exact original output
+# catalog. The Linux tester matched 187/187 individual assets; the six
+# generated atlases must still pass the unchanged full export validation.
+# This is not approval of arbitrary versions, mixed source sets, or resources.
+LINUX_REFERENCE_CATALOG = '4034ef056a904afe3d73bfca757a9b0de88e673f4f28e64bc1df4d2265f9b375'
+LINUX_SOURCE_FILES = {
+    "globalgamemanagers.assets": "af8450ecd6b11f6105d471a6a6a4cff1ea9c7703fadf114959e8098b584117f8",
+    "resources.assets": "93fcf0de1b837c5ecf7c06b36fc6c136dda9fa807c9b47de0d3c6e625c6b7c1e",
+    "sharedassets0.assets": "3a56342833ee872447ea22e5f5f910422d232cbe3e1dff90d45d0b5383be520d",
+    "sharedassets1.assets": "6538aa2b1aff1c2cce4c7133fe2072f540af342dfbb3c84862656c9869f09903",
+    "sharedassets2.assets": "add1ccfb22456b14fd7d918cd0b20c81eb46d8726d6482fb250cc5fb889f5642"
+}
+
+def source_profile(actual, recipes):
+    if actual == recipes['source_files']:
+        return 'original'
+    if (recipes.get('catalog') == LINUX_REFERENCE_CATALOG
+            and actual == LINUX_SOURCE_FILES):
+        return 'linux-reference'
+    return None
+
+
 def verify_source(game_data,recipes,check=lambda:None):
     game_data=Path(game_data).resolve()
     if not (game_data/'resources.assets').is_file():
         choices=[p for p in game_data.glob('*_Data') if (p/'resources.assets').is_file()]
         if len(choices)!=1:raise ValueError('Select the PC installation folder or its *_Data folder.')
         game_data=choices[0]
-    for name,wanted in recipes['source_files'].items():
+    actual={}
+    for name in recipes['source_files']:
         check()
         source=game_data/name
-        if not source.is_file() or sha_file(source)!=wanted:
-            raise ValueError('Unsupported or incomplete PC asset version: '+name+'. The original installation is unchanged.')
+        if not source.is_file():
+            raise ValueError('Missing PC asset file: '+name+'. The original installation is unchanged.')
+        actual[name]=sha_file(source)
+    if source_profile(actual,recipes) is None:
+        raise ValueError('Unsupported PC asset fingerprint set. The original installation is unchanged.')
     return game_data
 
 

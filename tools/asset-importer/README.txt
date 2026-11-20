@@ -14,8 +14,10 @@ Linux/macOS (Python 3.11+):
   .venv/bin/python -m pip install -r requirements.txt
   .venv/bin/python create_asset_pack.py /path/to/your/PC/game
 
-The tool supports only the resource fingerprints in recipes.json. Other
-versions are rejected before extraction; it does not guess at their layout.
+The tool supports the original resource fingerprints in recipes.json and the
+exact Linux reference fingerprint set in create_asset_pack.py. The Linux
+profile is tied to the original catalog; all output checks remain mandatory.
+Other versions and mixed fingerprint sets are rejected before extraction.
 The PC installation is read only. No game executable, DLL, decompiler output,
 encryption key, access-control bypass or protected bundled-song extraction is
 used. Only the listed resource files and interface sounds are read.
