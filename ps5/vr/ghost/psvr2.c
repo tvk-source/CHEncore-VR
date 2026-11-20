@@ -13,6 +13,7 @@
 #include "gvr_stats.h"
 #include "psvr2.h"
 #include "xr_log.h"
+#include "../probe_stereo.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -2411,16 +2412,27 @@ void psvr2_shutdown(void)
 }
 
 /* -- self test ---------------------------------------------------------------- */
-/* Native bounded diagnostic: identical, low-brightness cross in each eye.
+/* Native bounded diagnostic: projected low-brightness reference plane.
  * No Vulkan or changing credentials. Returns number of successful submissions. */
 int psvr2_selftest(const char *tag, int frames)
 {
     enum { EYE = 1024, NBUF = 3 };
     static void *buf[NBUF];
-    if (frames < 1 || frames > 540) return -1;
+    if (frames < 1 || frames > ENCORE_PROBE_FRAMES) return -1;
     if (psvr2_init_output() != 0) {
         XRLOG("selftest %s: init failed", tag);
         return -1;
+    }
+    encore_probe_eye optical[2];
+    for (int e=0; e<2; ++e) {
+        if (!encore_probe_eye_init(&optical[e],H.fov,H.info.ipd,e)) {
+            XRLOG("VR_PROBE invalid optical calibration");
+            return -1;
+        }
+        float u,v;
+        encore_probe_project(&optical[e],0.f,0.f,&u,&v);
+        XRLOG("VR_PROBE stereo eye=%d center_uv=%.5f %.5f eye_x=%.5f depth=%.2f",
+              e,(double)u,(double)v,(double)optical[e].eye_x,(double)optical[e].depth);
     }
     for (int b = 0; b < NBUF; b++) {
         if (!buf[b])
@@ -2428,16 +2440,13 @@ int psvr2_selftest(const char *tag, int frames)
         if (!buf[b])
             return -1;
         uint32_t *p = buf[b];
-        // A small cross, identical in all three buffers; no alternating colours.
+        // Both eyes see the same virtual reference plane. All buffers are immutable.
         for (unsigned y = 0; y < EYE; ++y)
             for (unsigned x = 0; x < 2 * EYE; ++x) {
-                const unsigned ex = x % EYE;
-                const int dx = (int)ex - EYE/2, dy = (int)y - EYE/2;
-                const int cross = (abs(dx) <= 8 && abs(dy) <= 96) ||
-                                  (abs(dy) <= 8 && abs(dx) <= 96);
-                const int ring = dx*dx + dy*dy >= 152*152 &&
-                                 dx*dx + dy*dy <= 160*160;
-                p[(size_t)y * 2 * EYE + x] = cross || ring ? 0xff808080u : 0xff202020u;
+                const unsigned e = x/EYE;
+                const float u = ((float)(x%EYE)+.5f)/EYE;
+                const float v = ((float)y+.5f)/EYE;
+                p[(size_t)y*2*EYE+x] = encore_probe_pixel(&optical[e],u,v);
             }
     }
     const uint64_t qf0 = H.stats.queue_full, err0 = H.stats.errors, fr0 = H.stats.frames;
@@ -2459,7 +2468,7 @@ int psvr2_selftest(const char *tag, int frames)
     }
     if (!tracked) XRLOG("selftest %s: tracking not ready", tag);
     for (int i = 1; tracked && i <= frames; i++) {
-        if (!psvr2_worn() || psvr2_exit_requested() || psvr2_now_us() - t0 >= 12000000u) {
+        if (!psvr2_worn() || psvr2_exit_requested() || psvr2_now_us() - t0 >= ENCORE_PROBE_DEADLINE_US) {
             XRLOG("selftest %s: stopped (wear/exit/deadline)", tag);
             break;
         }

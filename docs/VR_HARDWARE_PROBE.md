@@ -27,7 +27,7 @@ its samples.txt and optional ui.txt). No normal game build is needed first.
 The packaging step retains upstream open assets and licence notices; no
 user-imported resources are needed to run this probe. The probe metadata uses
 Ghost VR's VR app/VR-only bits, without the hand tracking flag; this metadata
-combination supported native output initialization on 7.61; visual output remains unconfirmed. The same title ID as the development
+combination supported native output initialization on 7.61; visible output is confirmed; binocular fusion remains unverified. The same title ID as the development
 game is intentional, so do not mount both builds simultaneously. The standard
 build (ENCORE_VR_PROBE=0, default) uses `build/ps5` and `dist/PPSA98743`.
 
@@ -40,9 +40,10 @@ launcher from a separate staging folder. Do not overwrite GhostVR or upstream
 Encore. Sit down, put the headset on before opening the probe, and launch.
 TV mirroring is intentionally disabled for this initial test.
 
-Expected: an enlarged steady grey cross and ring in both eyes, on dark grey,
-for at most 540 submitted frames at nominal 90 Hz (about six seconds).
-Tracking gets up to three seconds to settle; the loop stops at twelve seconds
+Expected (v4): a grey cross and ring on a common plane at nominal two metres,
+projected separately into each asymmetric eye texture, assuming parallel eye
+axes. Up to 2700 frames at nominal 90 Hz (about 30 seconds).
+Tracking gets up to three seconds to settle; the loop stops at 34 seconds
 or first failure, wear removal or tracking loss. SDK calls and display initialization may take additional time;
 the loop bound is not a watchdog against a blocked firmware call. Close the
 title if uncomfortable or stuck. Do not retry automatically. The headset
@@ -95,3 +96,18 @@ After completion LoadExec("exit") caused an attempted invalid ELF spawn
 provides a larger static test pattern with a longer bounded submission period.
 No GhostVR-specific payload dependency has been established or ruled out by
 this run; the exact set of active background payloads was not identified.
+
+## V4 optical test
+Two v3 runs submitted 540/540 frames in 5.98 seconds (90.3 submissions/s),
+with no submission errors or queue-full waits. Both reached the idle state.
+The tester saw two images, and closing the right eye left one image visible.
+The current hypothesis is incorrect binocular alignment rather than incorrect
+routing. V4 uses measured asymmetric FOV tangents and half-IPD translations,
+with expected horizontal center UVs 0.66567 and 0.33433 at 59 mm IPD.
+This static parallel-eye approximation does not establish the actual eye-pose
+conventions or world-locked tracking. Sit still and stop immediately if the
+images are uncomfortable; do not force fusion. Removing the headset stops
+the frame loop. After the test close the idle title through the PS menu.
+No changes to firmware, headset initialization, buffer registration or
+submission ABI. VO_BUSY on unregister remains unresolved, so no buffers are
+rewritten or reused for another session before title closure.

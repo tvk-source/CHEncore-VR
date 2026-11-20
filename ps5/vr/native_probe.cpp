@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "native_probe.hpp"
+#include "probe_stereo.h"
 #include "ghost/psvr2.h"
 #include "../src/platform.h"
 #include <cstdint>
@@ -14,7 +15,7 @@ static_assert(offsetof(ProbeSoftwareVersion, version) == 0x24);
 extern "C" int sceKernelGetProsperoSystemSwVersion(ProbeSoftwareVersion*);
 extern "C" int sceKernelGetSystemSwVersion(ProbeSoftwareVersion*);
 namespace {
-constexpr int Frames = 540;
+constexpr int Frames = ENCORE_PROBE_FRAMES;
 int finish(int status) {
     say("VR_PROBE result=%s code=%d", status == 0 ? "SUBMISSIONS_PASS" : "FAIL_OR_INCOMPLETE", status);
     std::fflush(stderr);
@@ -55,7 +56,7 @@ int encore_vr_native_probe() {
     int submitted = -1;
     if (info.status == 0 && info.panel_w && info.panel_h && validFov &&
         std::isfinite(info.ipd) && info.ipd > 0.0f && psvr2_worn())
-        submitted = psvr2_selftest("encore-native-761", Frames);
+        submitted = psvr2_selftest("encore-native-761-v4", Frames);
     else
         say("VR_PROBE skipped: headset not ready, not worn, or invalid optical data");
     say("VR_PROBE submissions=%d requested=%d", submitted, Frames);

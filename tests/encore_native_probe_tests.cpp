@@ -4,11 +4,11 @@
 #include <cassert>
 #include <limits>
 namespace {
-int fwResult=0, initResult=0, submitted=540, status=0, worn=1;
+int fwResult=0, initResult=0, submitted=ENCORE_PROBE_FRAMES, status=0, worn=1;
 unsigned fw=0x0761, initCalls=0, selfCalls=0, shutdownCalls=0;
 float tangent=1.2f;
 void reset() {
-    fwResult=initResult=status=0; submitted=540; worn=1; fw=0x0761; tangent=1.2f;
+    fwResult=initResult=status=0; submitted=ENCORE_PROBE_FRAMES; worn=1; fw=0x0761; tangent=1.2f;
     initCalls=selfCalls=shutdownCalls=0;
 }
 }
@@ -28,7 +28,7 @@ extern "C" void psvr2_get_info(psvr2_info* i) {
     for(float& t:i->fov)t=tangent;
 }
 extern "C" int psvr2_worn() { return worn; }
-extern "C" int psvr2_selftest(const char*,int n) { assert(n==540); ++selfCalls; return submitted; }
+extern "C" int psvr2_selftest(const char*,int n) { assert(n==ENCORE_PROBE_FRAMES); ++selfCalls; return submitted; }
 int main() {
     reset(); fw=0x1360; assert(encore_vr_native_probe()==2 && initCalls==0);
     reset(); fw=0x0760; assert(encore_vr_native_probe()==2 && initCalls==0);
