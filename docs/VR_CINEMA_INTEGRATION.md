@@ -108,3 +108,13 @@ Move the existing pure accessor out of the native-only conditional so
 both builds share exactly the same implementation. Native download and
 cover-fetch behavior are unchanged; the host browser remains offline.
 Full host link and GPU reference execution still need verification.
+
+The 2fc9dfd host executable compiled and linked on the tester's system.
+The test-run resolver incorrectly looked only in build/ps5/samples.txt,
+and mapfile masked its failure. Use build/ps5-host/samples.txt explicitly,
+check resolver exit status, preserve the process exit status and require
+both reference images before success. No native rebuild required.
+Note that the original game requires the user's own EncoreAssets-v1.encore-assets
+pack, or an already installed host PC asset root. The distributed probe
+assets do not necessarily contain it. A setup screen is not the actual
+CHEncore menu/gameplay reference.

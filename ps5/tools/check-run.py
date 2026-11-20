@@ -40,11 +40,14 @@ DRIVER_ERROR = re.compile(r"\bradv(/ps5)?: .*(error|fail)|MESA: error|amdgpu: .*
 REFERENCE_TOLERANCE = 12.0
 
 
-def samples_in_build():
-    listing = ROOT / "build" / "ps5" / "samples.txt"
+def samples_in_build(build_dir=None):
+    listing = (Path(build_dir) if build_dir else ROOT / "build" / "ps5") / "samples.txt"
     if not listing.is_file():
-        sys.exit("no build/ps5/samples.txt: build the title first (ps5/tools/build.sh)")
-    return [s for s in listing.read_text().strip().split(";") if s]
+        sys.exit(f"no {listing}: configure/build the selected title first")
+    samples = [s.strip() for s in listing.read_text().strip().split(";") if s.strip()]
+    if not samples:
+        sys.exit(f"empty sample manifest: {listing}")
+    return samples
 
 
 def samples_in_menu():
@@ -58,8 +61,8 @@ def variants():
     return {m.group(1): m.group(2).split() for m in re.finditer(r"\n\s*VARIANTS\((\w+),\s*\"([^\"]*)\"\)", text)}
 
 
-def resolve(words):
-    built = samples_in_build()
+def resolve(words, build_dir=None):
+    built = samples_in_build(build_dir)
     listed = variants()
     chosen = []
     for word in words:
@@ -172,11 +175,12 @@ def check(run_dir, samples):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--build-dir", type=Path, help="CMake build directory used to resolve sample IDs")
     parser.add_argument("--resolve", nargs="+")
     parser.add_argument("--check", nargs="+", metavar=("RUN_DIR", "ID"))
     args = parser.parse_args()
     if args.resolve:
-        resolve(args.resolve)
+        resolve(args.resolve, args.build_dir)
         return 0
     if args.check:
         return check(args.check[0], args.check[1:])

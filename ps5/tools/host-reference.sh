@@ -76,7 +76,15 @@ if [[ ${1:-} == --save ]]; then
     [[ ${FRAMES:-300} == 300 ]] || { echo "references are made at 300 frames, the test runs' default" >&2; exit 2; }
 fi
 (( $# )) || set -- all
-mapfile -t samples < <(python3 "$ps5/tools/check-run.py" --resolve "$@")
+# A process substitution masks the resolver's exit code. Resolve first
+# and fail before starting the game if the manifest or selection is invalid.
+if ! resolved=$(python3 "$ps5/tools/check-run.py" --build-dir "$build" --resolve "$@"); then
+    echo "Host sample resolution failed" >&2
+    exit 1
+fi
+[[ -n $resolved ]] || { echo "No host samples selected" >&2; exit 1; }
+mapfile -t samples <<< "$resolved"
+echo "Host samples: ${samples[*]}"
 if [[ -n ${ENCORE_CINEMA_SHADER_DIR:-} ]]; then
     for sample in "${samples[@]}"; do rm -f "$build/app/screenshots/$sample.ppm.cinema.ppm"; done
 fi
@@ -84,7 +92,9 @@ printf 'frames %s\nscreenshot\nsamples %s\n' "${FRAMES:-300}" "${samples[*]}" > 
 out="$root/klog/host-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$out"
 status=0
-"$build/ps5-samples-host" 2>&1 | tee "$out/log.txt" | grep -E "\] (sample|samples|test run|ends)|CINEMA_REFERENCE|Fatal|rror" || true
+# Preserve the executable's exit status and all diagnostics (including
+# asset-import errors); do not accidentally turn a failed launch into PASS.
+if ! "$build/ps5-samples-host" 2>&1 | tee "$out/log.txt"; then status=1; fi
 grep -q "ends: status 0" "$out/log.txt" || status=1
 if [[ -n ${ENCORE_CINEMA_SHADER_DIR:-} ]]; then
     grep -q "CINEMA_REFERENCE PASS" "$out/log.txt" || status=1
@@ -92,7 +102,15 @@ if [[ -n ${ENCORE_CINEMA_SHADER_DIR:-} ]]; then
 fi
 for sample in "${samples[@]}"; do
     ppm="$build/app/screenshots/$sample.ppm"
-    [[ -f $ppm ]] || continue
+    if [[ ! -s $ppm ]]; then
+        echo "Missing original screenshot: $ppm" >&2
+        status=1
+        continue
+    fi
+    if [[ -n ${ENCORE_CINEMA_SHADER_DIR:-} && ! -s $ppm.cinema.ppm ]]; then
+        echo "Missing stereo screenshot: $ppm.cinema.ppm" >&2
+        status=1
+    fi
     if [[ -f $ppm.cinema.ppm ]]; then
         python3 -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' "$ppm.cinema.ppm" "$out/$sample.cinema.png"
     fi
@@ -104,5 +122,9 @@ for sample in "${samples[@]}"; do
     fi
 done
 if $save; then echo "references: $ps5/reference/"; fi
-echo "pictures: $out/*.png"
+if (( status == 0 )); then
+    echo "pictures: $out/*.png"
+else
+    echo "Host reference failed; see $out/log.txt" >&2
+fi
 exit $status
