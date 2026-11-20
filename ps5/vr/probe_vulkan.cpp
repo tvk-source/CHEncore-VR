@@ -32,7 +32,7 @@ struct State {
     VkCommandBuffer cb{},worldCb{};
     VkFence fence{};
     void* mapped{};
-    bool pending{}, verified{};
+    bool pending{}, verified{}, liveReady{};
     size_t sampleIndex[6]{};
     uint32_t sampleValue[6]{};
 } g;
@@ -281,7 +281,8 @@ extern "C" int encore_probe_gpu_replay(void) {
     }
     return 0;
 }
-extern "C" int encore_probe_gpu_markers(const float uv[2][12][2],const int visible[2][12]) {
+static int renderMarkers(const float uv[2][12][2],const int visible[2][12],unsigned lanes,bool chart) {
+    g.liveReady=false;
     if(!g.verified||g.pending||!uv||!visible)return -1;
     constexpr unsigned size=1024;
     struct Sample{size_t index;uint32_t pixel;};
@@ -316,9 +317,26 @@ extern "C" int encore_probe_gpu_markers(const float uv[2][12][2],const int visib
                 vkCmdEndRenderPass(g.worldCb);return -1;
             }
             int x=int(u*size),y=int(v*size);
-            VkClearRect rect{{{x-6,y-6},{13,13}},0,1};
+            const uint32_t colors[5]={0xff40d040u,0xff4040dfu,0xff40d7dfu,0xffdf7040u,0xff40a0f0u};
+            uint32_t color=0xff808080u;
+            int halfX=6, halfY=6;
+            if(chart){
+                if(j<10)color=colors[j%5];
+                if(j<5){halfX=10;halfY=5;if(lanes&(1u<<j))color=0xfff0f0f0u;}
+                if(j>=10){color=0xffb0b0b0u;halfX=4;halfY=4;}
+            }
+            for(unsigned c=0;c<4;++c)a.clearValue.color.float32[c]=float((color>>(8*c))&255u)/255.f;
+            VkClearRect rect{{{x-halfX,y-halfY},{unsigned(2*halfX+1),unsigned(2*halfY+1)}},0,1};
+            // Overlapping clear rectangles: earlier validation samples must
+            // expect the final color at their center, not the overwritten one.
+            for(unsigned k=0;k<n;++k){
+                const size_t at=samples[k].index;
+                if((at%(2*size))/size!=side)continue;
+                int sx=int(at%size),sy=int(at/(2*size));
+                if(sx>=x-halfX&&sx<=x+halfX&&sy>=y-halfY&&sy<=y+halfY)samples[k].pixel=color;
+            }
             vkCmdClearAttachments(g.worldCb,1,&a,1,&rect);
-            samples[n++]={size_t(y)*2*size+side*size+unsigned(x),UINT32_C(0xff808080)};
+            samples[n++]={size_t(y)*2*size+side*size+unsigned(x),color};
         }
         vkCmdEndRenderPass(g.worldCb);
         samples[n++]={side*size,UINT32_C(0xff202020)};
@@ -337,6 +355,22 @@ extern "C" int encore_probe_gpu_markers(const float uv[2][12][2],const int visib
     for(unsigned i=0;i<n;++i)if(pixels[samples[i].index]!=samples[i].pixel){
         say("VR_PROBE world GPU readback mismatch sample=%u",i);return -1;
     }
+    g.liveReady=chart;
+    return 0;
+}
+extern "C" int encore_probe_gpu_markers(const float uv[2][12][2],const int visible[2][12]) {
+    return renderMarkers(uv,visible,0,false);
+}
+extern "C" int encore_probe_gpu_chart(const float uv[2][12][2],const int visible[2][12],unsigned lanes) {
+    return renderMarkers(uv,visible,lanes,true);
+}
+extern "C" int encore_probe_gpu_copy_live(void *target) {
+    if(!target||!g.liveReady||g.pending||!g.mapped)return -1;
+    // GPU fence and pixel samples already passed. Caller owns the
+    // experimental compositor flip/age decision. WB_ONION direct memory
+    // uses the same CPU write path as the verified startup buffers.
+    std::memcpy(target,g.mapped,1024u*1024u*2u*4u);
+    g.liveReady=false;
     return 0;
 }
 extern "C" int encore_probe_gpu_world(const float uv[2][3][2],const int visible[2][3]) {

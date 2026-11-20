@@ -253,3 +253,29 @@ V9 immutable targets remain unchanged. Do not request repeated
 hardware tests until a meaningful presentation milestone is ready.
 Host rhythm tests passed GCC and Clang; native integration still needs
 build and physical verification. No change to firmware or credentials.
+
+## V11 bounded live chart experiment (2026-11-20)
+GhostVR supplied reference xr_vulkan.c rotates its output index modulo
+OUT_BUFFERS before compose, and xr_session.c submits the completed buffer
+with the rendering head pose. That is precedent, not a release guarantee.
+V11 preserves the first 90/120Hz static feedback phases. At the 60Hz
+phase it recenters on a validated pose and resets the rhythm clock.
+The GPU draws five colored target markers, moving note markers and hand
+markers using measured eyes. Samples account for overlapping rectangles.
+After fence/sample verification, a fresh flip-status observation must
+still permit copying the private readback into a 4-slot registered ring.
+No writes to the two most recent submitted/observed frames; require
+at least 33334us after the candidate's predicted display time. Reject
+invalid, future, regressing or >1-frame-lag observations. Choose oldest
+eligible slot. No write if gate fails; end after repeating last frame.
+This is an experimental heuristic, NOT a verified Hmd2 release fence.
+There may still be compositor references beyond these limits; possible
+artifacts, application hang/crash. No free/reallocate, firmware, system
+configuration, or credential changes. VO_BUSY teardown retained.
+Only 600 live frames maximum. Stop on discomfort, loss of tracking or
+headset removal. Keep the V9 package for rollback. Use L2, square,
+triangle, cross and R2 to hit the descending colored markers; no audio,
+real song assets or gameplay engine yet. The first 20 seconds are the
+same static preview; look forward at the live phase transition.
+Native build and hardware behavior unverified. Report whether motion
+is visible, world anchored, and comfortable; log LIVE summary.

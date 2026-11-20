@@ -18,6 +18,7 @@
 #include "../probe_timing.h"
 #include "../probe_world.h"
 #include "../probe_rhythm.h"
+#include "../probe_retirement.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -2479,7 +2480,7 @@ int psvr2_selftest(const char *tag, int frames)
         if (!buf[b])
             return -1;
     }
-    // Render before registration; never write these buffers while Hmd2 can read them.
+    // Initial images before registration. Phase 2 alone uses the experimental flip/age gate.
     if (encore_probe_gpu_render(optical,EYE,buf,NBUF)!=0) {
         XRLOG("VR_PROBE GPU validation failed; no headset output registered");
         return -1;
@@ -2508,6 +2509,9 @@ int psvr2_selftest(const char *tag, int frames)
     encore_rhythm rhythm;encore_rhythm_init(&rhythm);
     uint64_t rhythm_start=0,rhythm_frames=0;
     unsigned rhythm_inputs=0;
+    encore_live_slot live_slots[4]={{0}};
+    uint64_t live_count=0,live_reuses=0,live_copy_total=0,live_copy_max=0;
+    int live_blocked=0;
     psvr2_vblank(&phase_vb,&phase_vt);
     XRLOG("VR_PROBE BATCH phase=0 90Hz; keep head still first 4s, then squeeze L2 and R2 separately and together");
     // Give the tracker up to 3 seconds to settle before beginning any frame.
@@ -2526,7 +2530,7 @@ int psvr2_selftest(const char *tag, int frames)
         }
         int next=encore_batch_phase(i);
         if(next!=phase){
-            // Only immutable buffers are registered. Transition with no pending app frames.
+            // Transition with no pending app frames. Live writes start only in phase 2.
             if(H.npending || psvr2_output_set_mode(next)!=0 || wait_display_live()!=0){
                 XRLOG("VR_PROBE BATCH mode transition failed phase=%d; no further phases",next);
                 break;
@@ -2559,12 +2563,15 @@ int psvr2_selftest(const char *tag, int frames)
                   i,(unsigned long)elapsed,(double)dev.pos[0],(double)dev.pos[1],(double)dev.pos[2],
                   (double)dev.quat[0],(double)dev.quat[1],(double)dev.quat[2],(double)dev.quat[3]);
         }
+        int flip_rc=-1,flip_ok=0;
+        uint64_t shown=0;
         if(i>1){
             // The pinned PS5_Vulkan TV WSI uses word 3 as the shown flip
             // argument. Verify its behavior on this VR port, read-only.
             uint64_t status[32]={0};
             int rc=sceVideoOutGetFlipStatus(H.vh,status);
             int valid=encore_flip_sample(&flips,rc,status[3],(uint64_t)(i-1));
+            flip_rc=rc;shown=status[3];flip_ok=valid;
             if(i<=12||i%450==0||i==frames)
                 XRLOG("VR_PROBE flip frame=%d rc=0x%08x shown_word3=%lu last_submitted=%d valid=%d raw0=%lu raw1=%lu raw2=%lu",
                       i,rc,(unsigned long)status[3],i-1,valid,(unsigned long)status[0],
@@ -2593,6 +2600,28 @@ int psvr2_selftest(const char *tag, int frames)
                 }
             }
         }
+        int live_slot=-1;
+        if(phase==2){
+            if(!world_ready||!flip_ok||!encore_pose_valid(&dev)){
+                live_blocked=1;
+                psvr2_repeat_frame((uint64_t)i);
+                XRLOG("VR_PROBE LIVE stopped: origin/flip/pose invalid frame=%d",i);break;
+            }
+            live_slot=encore_live_choose(live_slots,shown,(uint64_t)(i-1),psvr2_now_us(),flip_rc);
+            if(live_slot<0){
+                live_blocked=1;
+                psvr2_repeat_frame((uint64_t)i);
+                XRLOG("VR_PROBE LIVE stopped: no eligible slot frame=%d shown=%lu",i,(unsigned long)shown);break;
+            }
+            if(!live_count){
+                // Recenter the chart at the first stable live frame. Reset the
+                // private clock so invisible V10 notes do not count as misses.
+                rhythm_anchor=dev;
+                encore_rhythm_init(&rhythm);rhythm_start=elapsed;
+                rhythm.previous=lanes;rhythm_inputs=0;
+                XRLOG("VR_PROBE LIVE start: 60Hz, four-slot experimental flip/age rotation, visible chart");
+            }
+        }
         if(elapsed>=3000000u){
             const uint64_t gpu_start=psvr2_now_us();
             int gpu_rc;
@@ -2603,8 +2632,8 @@ int psvr2_selftest(const char *tag, int frames)
                     visible[side][j]=encore_world_project(&optical[side],&eyes[side],world_points[j],uv[side][j]);
                     if(visible[side][j]<0)valid=0;
                 }
-                // Timed five-lane chart and tracked controller markers on private
-                // GPU images. Nothing here writes registered compositor buffers.
+                // Timed chart and tracked controllers in private GPU images.
+                // Only a completed live chart may be copied later through the gate.
                 if(!rhythm_start)rhythm_start=elapsed;
                 encore_rhythm_tick(&rhythm,elapsed-rhythm_start,lanes);
                 rhythm_inputs|=lanes;
@@ -2629,7 +2658,8 @@ int psvr2_selftest(const char *tag, int frames)
                     chart_visible[side][j]=encore_world_project(&optical[side],&eyes[side],points[j],chart_uv[side][j]);
                     if(chart_visible[side][j]<0)valid=0;
                 }
-                gpu_rc=valid?encore_probe_gpu_markers(chart_uv,chart_visible):-1;
+                gpu_rc=!valid?-1:live_slot>=0?encore_probe_gpu_chart(chart_uv,chart_visible,lanes):
+                     encore_probe_gpu_markers(chart_uv,chart_visible);
                 if(!gpu_rc)++rhythm_frames;
                 if(!gpu_rc){
                     ++world_count;
@@ -2659,11 +2689,40 @@ int psvr2_selftest(const char *tag, int frames)
             psvr2_repeat_frame((uint64_t)i);
             break;
         }
-        if(variant!=old_variant){
+        if(live_slot<0 && variant!=old_variant){
             XRLOG("VR_PROBE BATCH highway input variant=%u phase=%d",variant,phase);
             old_variant=variant;
         }
-        if (psvr2_submit((int)variant, (uint64_t)i, disp, &dev, tl, tr) != 0) {
+        int display_slot=(int)variant;
+        if(live_slot>=0){
+            // Fresh observation after the GPU fence: fail closed on any
+            // inconsistency. Never write the current or previous slot, and
+            // leave at least 33.334 ms after its predicted presentation.
+            uint64_t status[32]={0};
+            int rc=sceVideoOutGetFlipStatus(H.vh,status);
+            const uint64_t previous=live_slots[live_slot].frame;
+            if(status[3]<shown || !encore_live_eligible(&live_slots[live_slot],status[3],
+                       (uint64_t)(i-1),psvr2_now_us(),rc)){
+                live_blocked=1;
+                psvr2_repeat_frame((uint64_t)i);
+                XRLOG("VR_PROBE LIVE stopped: post-fence gate failed frame=%d slot=%d rc=0x%08x",i,live_slot,rc);
+                break;
+            }
+            const uint64_t copy_start=psvr2_now_us();
+            if(encore_probe_gpu_copy_live(buf[live_slot])!=0){
+                live_blocked=1;psvr2_repeat_frame((uint64_t)i);
+                XRLOG("VR_PROBE LIVE stopped: no completed chart");break;
+            }
+            const uint64_t copy_us=psvr2_now_us()-copy_start;
+            live_copy_total+=copy_us;if(copy_us>live_copy_max)live_copy_max=copy_us;
+            if(previous)++live_reuses;
+            display_slot=live_slot;
+            if(live_count<4||i%150==0)
+                XRLOG("VR_PROBE LIVE frame=%d slot=%d prior=%lu shown=%lu copy_us=%lu hits=%u misses=%u",
+                      i,live_slot,(unsigned long)previous,(unsigned long)status[3],
+                      (unsigned long)copy_us,rhythm.hits,rhythm.misses);
+        }
+        if (psvr2_submit(display_slot, (uint64_t)i, disp, &dev, tl, tr) != 0) {
             XRLOG("selftest %s: submission failed at %d", tag, i);
             break;
         }
@@ -2688,7 +2747,9 @@ int psvr2_selftest(const char *tag, int frames)
                   i,(double)dev.pos[0],(double)dev.pos[1],(double)dev.pos[2],(double)dev.quat[0],
                   (double)dev.quat[1],(double)dev.quat[2],(double)dev.quat[3]);
         }
-        ok++;++phase_count;++display_counts[variant];
+        live_slots[display_slot]=(encore_live_slot){(uint64_t)i,disp};
+        if(live_slot>=0)++live_count;else ++display_counts[variant];
+        ok++;++phase_count;
         if(i==encore_batch_end(phase)){
             uint64_t end_vb=0,end_vt=0;
             int vrc=psvr2_vblank(&end_vb,&end_vt);
@@ -2708,7 +2769,7 @@ int psvr2_selftest(const char *tag, int frames)
     }
     XRLOG("VR_PROBE BATCH highway displayed neutral=%lu left=%lu right=%lu both=%lu (successful submissions)",
           (unsigned long)display_counts[0],(unsigned long)display_counts[1],(unsigned long)display_counts[2],(unsigned long)display_counts[3]);
-    XRLOG("VR_PROBE V10 private rhythm frames=%lu lanes_seen=0x%x hits=%u misses=%u off_window=%u (invisible diagnostic; not a player score)",
+    XRLOG("VR_PROBE V11 rhythm frames=%lu lanes_seen=0x%x hits=%u misses=%u off_window=%u (chart clock reset at live start)",
           (unsigned long)rhythm_frames,rhythm_inputs,rhythm.hits,rhythm.misses,rhythm.early);
     XRLOG("VR_PROBE BATCH summary phases_completed=%d/3 world_private_frames=%lu origin=%d",
           phase_done,(unsigned long)world_count,world_ready);
@@ -2717,7 +2778,10 @@ int psvr2_selftest(const char *tag, int frames)
           frames, secs, secs > 0 ? ok / secs : 0.0, (unsigned long)(H.stats.queue_full - qf0),
           (unsigned long)(H.stats.errors - err0), psvr2_worn());
     (void)fr0;
-    XRLOG("VR_PROBE V10 summary origin_candidate=%d replay_count=%lu replay_over_11ms=%lu flip_valid=%lu flip_invalid=%lu flip_regressed=%lu flip_max_lag=%lu",
+    XRLOG("VR_PROBE LIVE summary frames=%lu reuses=%lu blocked=%d mean_copy_us=%.1f max_copy_us=%lu",
+          (unsigned long)live_count,(unsigned long)live_reuses,live_blocked,
+          live_count?(double)live_copy_total/(double)live_count:0.0,(unsigned long)live_copy_max);
+    XRLOG("VR_PROBE V11 summary origin_candidate=%d replay_count=%lu replay_over_11ms=%lu flip_valid=%lu flip_invalid=%lu flip_regressed=%lu flip_max_lag=%lu",
           gate.anchored,(unsigned long)gpu_count,(unsigned long)gpu_over,(unsigned long)flips.valid,
           (unsigned long)flips.invalid,(unsigned long)flips.regressed,(unsigned long)flips.max_lag);
     psvr2_output_stop();

@@ -63,7 +63,7 @@ int encore_vr_native_probe() {
     int submitted = -1;
     if (info.status == 0 && info.panel_w && info.panel_h && validFov &&
         std::isfinite(info.ipd) && info.ipd > 0.0f && psvr2_worn())
-        submitted = psvr2_selftest("encore-native-761-v10-rhythm", Frames);
+        submitted = psvr2_selftest("encore-native-761-v11-live", Frames);
     else
         say("VR_PROBE skipped: headset not ready, not worn, or invalid optical data");
     say("VR_PROBE submissions=%d requested=%d", submitted, Frames);
