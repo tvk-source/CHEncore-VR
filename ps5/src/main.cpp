@@ -456,6 +456,10 @@ int main(int argc,char** argv)
 	encore_startup::checkpoint("Vulkan dispatch ready; before launch configuration");
 	int status = 0;
 	TestRun run;
+#if defined(ENCORE_VR_CINEMA)
+    // An old test-run.txt must not turn the interactive alpha into a benchmark.
+    status=runSample(ps5Samples[0],0,"",false).ok?0:1;
+#else
 	if (readTestRun(run)) {
 		status = runTests(run);
 	} else if (ps5SampleCount == 1) {
@@ -464,6 +468,7 @@ int main(int argc,char** argv)
 	} else {
 		runMenu();
 	}
+#endif
 	if (results) {
 		report("ends: status %d", status);
 		fclose(results);

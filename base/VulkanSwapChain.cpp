@@ -446,7 +446,11 @@ void VulkanSwapChain::initOffscreen()
 		return;
 	}
 	colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-	std::cerr << "host reference: no headless surface on this device, rendering to offscreen images\n";
+	#if defined(ENCORE_VR_CINEMA)
+    std::cerr << "VR_CINEMA offscreen game images (no TV swapchain)\n";
+#else
+    std::cerr << "host reference: no headless surface on this device, rendering to offscreen images\n";
+#endif
 }
 
 void VulkanSwapChain::destroyOffscreenImages()

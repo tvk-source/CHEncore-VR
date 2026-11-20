@@ -272,7 +272,11 @@ bool encoreCinemaReference(VkPhysicalDevice physical,VkDevice device,VkQueue que
         if(!screen)throw std::runtime_error("invalid reference geometry");
         Eye eyes[2]={{{{-.0295f,1.2f,0},{},true},{1.8418f,.9472f,1.329f,1.329f}},
                      {{{ .0295f,1.2f,0},{},true},{.9472f,1.8418f,1.329f,1.329f}}};
-        renderer.render(original,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,*screen,eyes);
+        // Exercise the persistent resource path as well as first use.
+        // Same source is restored each time; the sampled image is reused.
+        for(unsigned frame=0;frame<3;++frame)
+            renderer.render(original,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,*screen,eyes);
+        std::fprintf(stderr,"CINEMA_REFERENCE persistent_frames=3\n");
         std::vector<uint8_t> rgba(bytes),rgb(size_t(width)*height*3);
         renderer.copy(rgba.data());
         const auto* p=rgba.data();
@@ -328,6 +332,7 @@ bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue q
         if(!native.initialized){
             native.renderer=std::make_unique<CinemaRenderer>(physical,device,queue,family,format,extent,shaders);
             // Game Vulkan/AGC is initialized before Hmd2, as in V12.
+            check(vkQueueWaitIdle(queue),"game queue idle before Hmd2");
             psvr2_set_dualsense(0);psvr2_set_mirror(0);
             if(psvr2_init_output()!=0)throw std::runtime_error("Hmd2 init");
             psvr2_get_info(&native.optics);
@@ -361,7 +366,8 @@ bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue q
         if(after.errors!=before.errors||after.queue_full!=before.queue_full||after.repeated!=before.repeated)
             throw std::runtime_error("unexpected reprojection queue activity");
         psvr2_pose head{},poses[2]{};
-        if(!psvr2_head(display,&head,poses,nullptr,nullptr))throw std::runtime_error("tracking lost");
+        if(!psvr2_head(display,&head,poses,nullptr,nullptr)||!validTrackedPose(convert(head)))
+            throw std::runtime_error("tracking lost");
         psvr2_poll();
         if(psvr2_take_recenter()){
             auto screen=cinemaScreen(convert(head),3.6f,float(extent.width)/extent.height,2.f);
@@ -387,6 +393,7 @@ bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue q
             native.lastShown=latest;
         }
         if(!psvr2_worn()||psvr2_exit_requested())throw std::runtime_error("headset removed");
+        // No public retirement fence: fail closed and never reuse this storage after shutdown.
         native.renderer->copy(native.buffers[slot]);
         const float left[4]={f[0],f[1],f[2],f[3]},right[4]={f[1],f[0],f[2],f[3]};
         int rc=psvr2_submit(slot,id,display,&head,left,right);pending=0;

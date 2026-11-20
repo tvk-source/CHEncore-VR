@@ -155,3 +155,11 @@ build has yet been run on this alpha.
 Build separately using ENCORE_VR_CINEMA=1. The existing V12 probe build,
 native firmware and system remain unchanged. Private pack files are ignored
 and staged only locally. Never publish the staged personal build.
+
+Host reference now exercises three serial compositor submissions using the
+same GPU resources. The alpha skips stale benchmark test-run.txt files and
+waits for game queue idle before starting Hmd2. Batch build validates staged
+executable, module, metadata, shaders and private asset pack. The first
+console session is limited to 5 minutes; use seated play and stop on visual
+instability. Due to shared title ID, back up the existing native folder and
+preserve userdata/songs before deployment; never target the Linux PS5.
