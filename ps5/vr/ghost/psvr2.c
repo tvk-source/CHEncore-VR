@@ -16,6 +16,7 @@
 #include "../probe_stereo.h"
 #include "../probe_vulkan.h"
 #include "../probe_timing.h"
+#include "../probe_world.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -2461,6 +2462,13 @@ int psvr2_selftest(const char *tag, int frames)
     encore_origin_gate gate={0};
     encore_flip_observation flips={0};
     uint64_t gpu_total=0,gpu_max=0,gpu_count=0,gpu_over=0;
+    uint64_t phase_start=t0,phase_vb=0,phase_vt=0,phase_gpu_total=0,phase_gpu_count=0,phase_gpu_max=0,phase_over=0;
+    uint64_t world_count=0,connected[2]={0},located[2]={0},trigger_samples[2]={0};
+    unsigned buttons_seen[2]={0},haptic_sent[2]={0},armed[2]={0};
+    int phase=0,phase_done=0,phase_count=0,world_ready=0;
+    float world_points[3][3]={{0}};
+    psvr2_vblank(&phase_vb,&phase_vt);
+    XRLOG("VR_PROBE BATCH phase=0 90Hz gray; keep head still first 4s, then move gently and press each Sense trigger once");
     // Give the tracker up to 3 seconds to settle before beginning any frame.
     psvr2_pose dev = {{0, 0, 0}, {0, 0, 0, 1}}, eyes[2];
     float lv[3], av[3];
@@ -2474,6 +2482,21 @@ int psvr2_selftest(const char *tag, int frames)
         if (!psvr2_worn() || psvr2_exit_requested() || psvr2_now_us() - t0 >= ENCORE_PROBE_DEADLINE_US) {
             XRLOG("selftest %s: stopped (wear/exit/deadline)", tag);
             break;
+        }
+        int next=encore_batch_phase(i);
+        if(next!=phase){
+            // Only immutable buffers are registered. Transition with no pending app frames.
+            if(H.npending || psvr2_output_set_mode(next)!=0 || wait_display_live()!=0){
+                XRLOG("VR_PROBE BATCH mode transition failed phase=%d; no further phases",next);
+                break;
+            }
+            H.last_begin_us=H.last_display_us=0;
+            H.pace_vb=H.pace_frames=0;H.live=0;
+            phase=next;phase_start=psvr2_now_us();phase_count=0;
+            phase_gpu_total=phase_gpu_count=phase_gpu_max=phase_over=0;
+            phase_vb=phase_vt=0;psvr2_vblank(&phase_vb,&phase_vt);
+            XRLOG("VR_PROBE BATCH phase=%d configured refresh=%.0f target_submit=%.0f tint=%s",
+                  phase,(double)psvr2_refresh_hz(),(double)psvr2_frame_hz(),phase==1?"green":"blue");
         }
         uint64_t disp = 0;
         if (psvr2_begin_frame((uint64_t)i, &disp) != 0) {
@@ -2489,6 +2512,7 @@ int psvr2_selftest(const char *tag, int frames)
         // frame, in resources entirely separate from the headset buffers.
         const uint64_t elapsed=psvr2_now_us()-t0;
         if(encore_origin_sample(&gate,elapsed,dev.pos,dev.quat)) {
+            encore_world_anchor(&dev,world_points);world_ready=1;
             XRLOG("VR_PROBE origin candidate frame=%d elapsed_us=%lu pos=(%.4f %.4f %.4f) quat=(%.5f %.5f %.5f %.5f)",
                   i,(unsigned long)elapsed,(double)dev.pos[0],(double)dev.pos[1],(double)dev.pos[2],
                   (double)dev.quat[0],(double)dev.quat[1],(double)dev.quat[2],(double)dev.quat[3]);
@@ -2504,15 +2528,52 @@ int psvr2_selftest(const char *tag, int frames)
                       i,rc,(unsigned long)status[3],i-1,valid,(unsigned long)status[0],
                       (unsigned long)status[1],(unsigned long)status[2]);
         }
+        // Read real Sense input; send one short, low-intensity pulse per trigger.
+        psvr2_poll();
+        for(int side=0;side<2;++side){
+            psvr2_controller c;
+            psvr2_get_controller(side,psvr2_now_us(),&c);
+            if(c.source!=1 || !c.connected){armed[side]=0;continue;}
+            ++connected[side];if(c.tracked)++located[side];
+            buttons_seen[side]|=c.buttons;
+            if(c.trigger<.15f)armed[side]=1;
+            if(c.trigger>.55f){
+                ++trigger_samples[side];
+                if(armed[side]&&!haptic_sent[side]&&elapsed>=4000000u){
+                    psvr2_haptic(side,.15f,.08f);haptic_sent[side]=1;
+                    XRLOG("VR_PROBE BATCH Sense %d trigger detected; 80ms pulse requested",side);
+                }
+            }
+        }
         if(elapsed>=3000000u){
             const uint64_t gpu_start=psvr2_now_us();
-            if(encore_probe_gpu_replay()!=0){
+            int gpu_rc;
+            if(phase>0 && world_ready){
+                float uv[2][3][2]={{{0}}};int visible[2][3]={{0}};
+                int valid=1;
+                for(int side=0;side<2;++side)for(int j=0;j<3;++j){
+                    visible[side][j]=encore_world_project(&optical[side],&eyes[side],world_points[j],uv[side][j]);
+                    if(visible[side][j]<0)valid=0;
+                }
+                gpu_rc=valid?encore_probe_gpu_world(uv,visible):-1;
+                if(!gpu_rc){
+                    ++world_count;
+                    if(i%300==0||i==frames)
+                        XRLOG("VR_PROBE BATCH world private frame=%d centerL=(%.4f %.4f) centerR=(%.4f %.4f) visible=%d/%d",
+                              i,(double)uv[0][1][0],(double)uv[0][1][1],(double)uv[1][1][0],(double)uv[1][1][1],
+                              visible[0][1],visible[1][1]);
+                }
+            }else gpu_rc=encore_probe_gpu_replay();
+            if(gpu_rc!=0){
                 psvr2_repeat_frame((uint64_t)i);
                 XRLOG("VR_PROBE GPU replay failed at %d",i);
                 break;
             }
             const uint64_t cost=psvr2_now_us()-gpu_start;
             gpu_total+=cost;++gpu_count;
+            phase_gpu_total+=cost;++phase_gpu_count;
+            if(cost>phase_gpu_max)phase_gpu_max=cost;
+            if(cost>(uint64_t)(1000000.f/psvr2_frame_hz()))++phase_over;
             if(cost>gpu_max)gpu_max=cost;
             if(cost>11111u)++gpu_over;
             if(i%450==0||i==frames)
@@ -2523,7 +2584,7 @@ int psvr2_selftest(const char *tag, int frames)
             psvr2_repeat_frame((uint64_t)i);
             break;
         }
-        if (psvr2_submit((i-1) % NBUF, (uint64_t)i, disp, &dev, tl, tr) != 0) {
+        if (psvr2_submit(phase, (uint64_t)i, disp, &dev, tl, tr) != 0) {
             XRLOG("selftest %s: submission failed at %d", tag, i);
             break;
         }
@@ -2548,14 +2609,32 @@ int psvr2_selftest(const char *tag, int frames)
                   i,(double)dev.pos[0],(double)dev.pos[1],(double)dev.pos[2],(double)dev.quat[0],
                   (double)dev.quat[1],(double)dev.quat[2],(double)dev.quat[3]);
         }
-        ok++;
+        ok++;++phase_count;
+        if(i==encore_batch_end(phase)){
+            uint64_t end_vb=0,end_vt=0;
+            int vrc=psvr2_vblank(&end_vb,&end_vt);
+            double duration=(double)(psvr2_now_us()-phase_start)/1e6;
+            uint64_t delta=(vrc==0&&phase_vb&&end_vb>=phase_vb)?end_vb-phase_vb:0;
+            XRLOG("VR_PROBE BATCH phase=%d COMPLETE frames=%d seconds=%.3f submitted_fps=%.2f port_vblank_delta=%lu gpu_count=%lu mean_us=%.1f max_us=%lu over_budget=%lu",
+                  phase,phase_count,duration,duration>0?phase_count/duration:0.0,(unsigned long)delta,
+                  (unsigned long)phase_gpu_count,phase_gpu_count?(double)phase_gpu_total/phase_gpu_count:0.0,
+                  (unsigned long)phase_gpu_max,(unsigned long)phase_over);
+            ++phase_done;
+        }
     }
+    for(int side=0;side<2;++side){
+        if(haptic_sent[side])psvr2_haptic(side,0.f,0.f);
+        XRLOG("VR_PROBE BATCH Sense %d connected=%lu tracked=%lu trigger_samples=%lu buttons_seen=0x%x haptic_requested=%u",
+              side,(unsigned long)connected[side],(unsigned long)located[side],(unsigned long)trigger_samples[side],buttons_seen[side],haptic_sent[side]);
+    }
+    XRLOG("VR_PROBE BATCH summary phases_completed=%d/3 world_private_frames=%lu origin=%d",
+          phase_done,(unsigned long)world_count,world_ready);
     const double secs = (double)(psvr2_now_us() - t0) / 1e6;
     XRLOG("selftest %s: %d of %d frames in %.2f s (%.1f fps), queue-full waits %lu, errors %lu, worn %d", tag, ok,
           frames, secs, secs > 0 ? ok / secs : 0.0, (unsigned long)(H.stats.queue_full - qf0),
           (unsigned long)(H.stats.errors - err0), psvr2_worn());
     (void)fr0;
-    XRLOG("VR_PROBE V7 summary origin_candidate=%d replay_count=%lu replay_over_11ms=%lu flip_valid=%lu flip_invalid=%lu flip_regressed=%lu flip_max_lag=%lu",
+    XRLOG("VR_PROBE V8 summary origin_candidate=%d replay_count=%lu replay_over_11ms=%lu flip_valid=%lu flip_invalid=%lu flip_regressed=%lu flip_max_lag=%lu",
           gate.anchored,(unsigned long)gpu_count,(unsigned long)gpu_over,(unsigned long)flips.valid,
           (unsigned long)flips.invalid,(unsigned long)flips.regressed,(unsigned long)flips.max_lag);
     psvr2_output_stop();

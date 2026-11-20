@@ -4,7 +4,7 @@
 #pragma once
 #include <math.h>
 #include <stdint.h>
-enum { ENCORE_PROBE_FRAMES = 2700, ENCORE_PROBE_DEADLINE_US = 34000000 };
+enum { ENCORE_PROBE_FRAMES = 2700, ENCORE_PROBE_DEADLINE_US = 45000000 };
 typedef struct {
     float left, right, up, down, eye_x, depth;
 } encore_probe_eye;

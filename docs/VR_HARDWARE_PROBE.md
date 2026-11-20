@@ -185,3 +185,29 @@ candidate waits >=3s and 45 consecutive low-delta valid pose samples;
 this is a heuristic, not a runtime SLAM-quality flag; no world anchoring
 yet. Look forward and stay still during the first four seconds. The image
 should remain as V6. VO_BUSY and manual closure remain unchanged.
+
+## V8 integrated batch (2026-11-20)
+V7 passed twice: 2700/2700 submissions each, 2428 GPU replays each,
+mean 4.289/4.277 ms, max 4.923/4.927 ms, zero over 11ms, zero errors.
+Both runs acquired origin at frame 317 (~3.5s); 2699 valid flip samples,
+zero invalid/regressed or observed lag. VO_BUSY remains; flip status is
+not sufficient proof of Hmd2 retirement. V8 does not rewrite any registered buffers.
+Run bash ps5/tools/build-vr-batch.sh to pull, test and build once. Deploy
+both executable and engine PRX using existing method. A single 30s nominal
+run tests 900 submissions at 90Hz (gray), 1200 at 120Hz (green), and
+600 at 60-to-120 (blue). A failed mode transition stops; no fallback that
+hides a failure. The 45s overall frame-loop deadline includes transitions.
+Mode reports are configured targets, measured port vblank count and
+measured submit rate; not proof of generated reprojection frames.
+After origin acquisition, the alternate modes exercise actual tracked
+world point projection using the two measured eye poses and private
+Vulkan targets, with fence and GPU pixel checks. The visible three shapes
+are still head-relative; tint changes distinguish actual immutable
+buffer selections. No claim of displayed world lock. No live reuse.
+Sense polling logs connected/tracked counts, button mask and trigger
+samples. Press each trigger once after four seconds for one low-amplitude
+80ms controller pulse per side; user confirmation required, requests
+are not proof of haptics. Stop on discomfort or loss of tracking.
+No gaze, adaptive triggers, hand tracking, firmware or payload changes.
+Return combined log plus perceived gray/green/blue phase changes and
+whether each pulse was felt. Tests include world projection and phase boundaries.

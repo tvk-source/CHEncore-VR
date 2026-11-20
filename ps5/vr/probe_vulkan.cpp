@@ -28,7 +28,7 @@ struct State {
     VkBuffer readback{};
     VkDeviceMemory readbackMemory{};
     VkCommandPool pool{};
-    VkCommandBuffer cb{};
+    VkCommandBuffer cb{},worldCb{};
     VkFence fence{};
     void* mapped{};
     bool pending{}, verified{};
@@ -165,11 +165,13 @@ extern "C" int encore_probe_gpu_render(const encore_probe_eye eyes[2],unsigned s
     GPU_CHECK(vkMapMemory(g.device,g.readbackMemory,0,bytes,0,&g.mapped));
     VkCommandPoolCreateInfo pci{};
     pci.sType=VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;pci.queueFamilyIndex=g.family;
+    pci.flags=VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
     GPU_CHECK(vkCreateCommandPool(g.device,&pci,nullptr,&g.pool));
     VkCommandBufferAllocateInfo cai{};
     cai.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;cai.commandPool=g.pool;
     cai.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;cai.commandBufferCount=1;
     GPU_CHECK(vkAllocateCommandBuffers(g.device,&cai,&g.cb));
+    GPU_CHECK(vkAllocateCommandBuffers(g.device,&cai,&g.worldCb));
     VkFenceCreateInfo fi{};fi.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     GPU_CHECK(vkCreateFence(g.device,&fi,nullptr,&g.fence));
     VkCommandBufferBeginInfo begin{};
@@ -249,7 +251,14 @@ extern "C" int encore_probe_gpu_render(const encore_probe_eye eyes[2],unsigned s
         if(!background)return -1;
     }
     g.verified=true;
-    for(int i=0;i<count;++i)std::memcpy(buffers[i],g.mapped,size_t(bytes));
+    for(int i=0;i<count;++i) {
+        std::memcpy(buffers[i],g.mapped,size_t(bytes));
+        // Distinct phase tint, applied only before registration. No live writes.
+        const uint32_t tint[]={UINT32_C(0xff808080),UINT32_C(0xff608060),UINT32_C(0xff806060)};
+        auto* dest=static_cast<uint32_t*>(buffers[i]);
+        for(size_t k=0;k<size_t(bytes/4);++k)
+            if(dest[k]==UINT32_C(0xff808080))dest[k]=tint[i];
+    }
     say("VR_PROBE GPU raster/copy/fence/readback PASS; immutable headset buffers ready");
     return 0;
 }
@@ -267,6 +276,64 @@ extern "C" int encore_probe_gpu_replay(void) {
     for(unsigned i=0;i<6;++i)if(pixels[g.sampleIndex[i]]!=g.sampleValue[i]){
         say("VR_PROBE GPU replay readback mismatch sample=%u",i);
         return -1;
+    }
+    return 0;
+}
+extern "C" int encore_probe_gpu_world(const float uv[2][3][2],const int visible[2][3]) {
+    if(!g.verified||g.pending||!uv||!visible)return -1;
+    constexpr unsigned size=1024;
+    struct Sample{size_t index;uint32_t pixel;};
+    Sample samples[8]{};
+    unsigned n=0;
+    GPU_CHECK(vkResetCommandBuffer(g.worldCb,0));
+    VkCommandBufferBeginInfo begin{};
+    begin.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    GPU_CHECK(vkBeginCommandBuffer(g.worldCb,&begin));
+    vkCmdFillBuffer(g.worldCb,g.readback,0,VK_WHOLE_SIZE,UINT32_C(0xdeadbeef));
+    VkBufferMemoryBarrier barrier{};
+    barrier.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    barrier.srcAccessMask=barrier.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.srcQueueFamilyIndex=barrier.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+    barrier.buffer=g.readback;barrier.size=VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(g.worldCb,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,1,&barrier,0,nullptr);
+    for(unsigned side=0;side<2;++side){
+        VkClearValue bg{};
+        bg.color.float32[0]=bg.color.float32[1]=bg.color.float32[2]=32.f/255.f;bg.color.float32[3]=1.f;
+        VkRenderPassBeginInfo r{};
+        r.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;r.renderPass=g.pass;r.framebuffer=g.eye[side].framebuffer;
+        r.renderArea={{0,0},{size,size}};r.clearValueCount=1;r.pClearValues=&bg;
+        vkCmdBeginRenderPass(g.worldCb,&r,VK_SUBPASS_CONTENTS_INLINE);
+        VkClearAttachment a{};a.aspectMask=VK_IMAGE_ASPECT_COLOR_BIT;
+        a.clearValue.color.float32[0]=a.clearValue.color.float32[1]=a.clearValue.color.float32[2]=128.f/255.f;
+        a.clearValue.color.float32[3]=1.f;
+        // Fixed-size markers for the tracked world coordinates; private GPU target.
+        for(unsigned j=0;j<3;++j)if(visible[side][j]>0){
+            float u=uv[side][j][0],v=uv[side][j][1];
+            if(!(u>.02f&&u<.98f&&v>.02f&&v<.98f)){
+                vkCmdEndRenderPass(g.worldCb);return -1;
+            }
+            int x=int(u*size),y=int(v*size);
+            VkClearRect rect{{{x-6,y-6},{13,13}},0,1};
+            vkCmdClearAttachments(g.worldCb,1,&a,1,&rect);
+            samples[n++]={size_t(y)*2*size+side*size+unsigned(x),UINT32_C(0xff808080)};
+        }
+        vkCmdEndRenderPass(g.worldCb);
+        samples[n++]={side*size,UINT32_C(0xff202020)};
+    }
+    if(!encore::vr::copyEyes(g.worldCb,g.eye[0].image,g.eye[1].image,g.readback,size,size,
+                            vkCmdCopyImageToBuffer,vkCmdPipelineBarrier))return -1;
+    GPU_CHECK(vkEndCommandBuffer(g.worldCb));
+    GPU_CHECK(vkResetFences(g.device,1,&g.fence));
+    VkSubmitInfo submit{};
+    submit.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO;submit.commandBufferCount=1;submit.pCommandBuffers=&g.worldCb;
+    g.pending=true;
+    if(!check(vkQueueSubmit(g.queue,1,&submit,g.fence),"world vkQueueSubmit"))return -1;
+    if(!check(vkWaitForFences(g.device,1,&g.fence,VK_TRUE,100000000ull),"world vkWaitForFences"))return -1;
+    g.pending=false;
+    const auto* pixels=static_cast<const uint32_t*>(g.mapped);
+    for(unsigned i=0;i<n;++i)if(pixels[samples[i].index]!=samples[i].pixel){
+        say("VR_PROBE world GPU readback mismatch sample=%u",i);return -1;
     }
     return 0;
 }

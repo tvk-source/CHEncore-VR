@@ -27,7 +27,7 @@ int main(void)
     assert(fabsf(u[0]+u[1]-1.f)<1e-5f);
     assert(!encore_probe_eye_init(&e[0],fov,NAN,0));
     assert(!encore_probe_eye_init(&e[0],fov,.059f,2));
-    assert(ENCORE_PROBE_FRAMES==2700 && ENCORE_PROBE_DEADLINE_US==34000000);
+    assert(ENCORE_PROBE_FRAMES==2700 && ENCORE_PROBE_DEADLINE_US==45000000);
     const float bads[]={NAN, INFINITY, -INFINITY, 0.f};
     for(unsigned i=0;i<sizeof(bads)/sizeof(bads[0]);++i) {
         float invalid[4]={bads[i],.9472f,1.329f,1.329f};

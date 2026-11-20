@@ -15,6 +15,8 @@ int encore_probe_gpu_render(const encore_probe_eye eyes[2], unsigned size,
 void encore_probe_gpu_stop(void);
 /* Replay private offscreen work. No registered memory is written. */
 int encore_probe_gpu_replay(void);
+/* Render tracked world-space marker projections into private GPU memory. */
+int encore_probe_gpu_world(const float uv[2][3][2],const int visible[2][3]);
 #ifdef __cplusplus
 }
 #endif
