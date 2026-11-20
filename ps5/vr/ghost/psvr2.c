@@ -19,6 +19,7 @@
 #include "../probe_world.h"
 #include "../probe_rhythm.h"
 #include "../probe_retirement.h"
+#include "../probe_practice.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -2511,9 +2512,11 @@ int psvr2_selftest(const char *tag, int frames)
     unsigned rhythm_inputs=0;
     encore_live_slot live_slots[4]={{0}};
     uint64_t live_count=0,live_reuses=0,live_copy_total=0,live_copy_max=0;
-    int live_blocked=0;
+    int live_blocked=0,practice_audio=0;
+    uint64_t practice_start=0;
+    encore_practice_view practice={0};
     psvr2_vblank(&phase_vb,&phase_vt);
-    XRLOG("VR_PROBE BATCH phase=0 90Hz; keep head still first 4s, then squeeze L2 and R2 separately and together");
+    XRLOG("VR_PROBE BATCH phase=0 90Hz; look forward first 6s, then play practice chart for 30s");
     // Give the tracker up to 3 seconds to settle before beginning any frame.
     psvr2_pose dev = {{0, 0, 0}, {0, 0, 0, 1}}, eyes[2];
     float lv[3], av[3];
@@ -2619,7 +2622,10 @@ int psvr2_selftest(const char *tag, int frames)
                 rhythm_anchor=dev;
                 encore_rhythm_init(&rhythm);rhythm_start=elapsed;
                 rhythm.previous=lanes;rhythm_inputs=0;
-                XRLOG("VR_PROBE LIVE start: 60Hz, four-slot experimental flip/age rotation, visible chart");
+                encore_practice_begin(lanes);
+                practice_start=psvr2_now_us();
+                practice_audio=encore_practice_audio_start();
+                XRLOG("VR_PROBE LIVE start: original SongChart/InputEvaluator practice, 60Hz, audio_open=%d",practice_audio);
             }
         }
         if(elapsed>=3000000u){
@@ -2635,18 +2641,21 @@ int psvr2_selftest(const char *tag, int frames)
                 // Timed chart and tracked controllers in private GPU images.
                 // Only a completed live chart may be copied later through the gate.
                 if(!rhythm_start)rhythm_start=elapsed;
-                encore_rhythm_tick(&rhythm,elapsed-rhythm_start,lanes);
+                if(live_slot>=0){
+                    if(encore_practice_tick(psvr2_now_us()-practice_start,lanes,&practice)!=0)valid=0;
+                }else encore_rhythm_tick(&rhythm,elapsed-rhythm_start,lanes);
                 rhythm_inputs|=lanes;
                 float points[12][3]={{0}};
                 int enabled[12]={0};
                 for(unsigned lane=0;lane<5;++lane){
                     const float x=((float)lane-2.f)*.24f;
-                    float local[2][3]={{x,-.48f,-2.f},{x,-.48f+encore_rhythm_distance(&rhythm,lane),-2.f}};
+                    const float distance=live_slot>=0?practice.distance[lane]:encore_rhythm_distance(&rhythm,lane);
+                    float local[2][3]={{x,-.48f,-2.f},{x,-.48f+distance,-2.f}};
                     for(int kind=0;kind<2;++kind){
                         unsigned j=lane+5u*(unsigned)kind;
                         encore_rotate(rhythm_anchor.quat,local[kind],points[j]);
                         for(int k=0;k<3;++k)points[j][k]+=rhythm_anchor.pos[k];
-                        enabled[j]=1;
+                        enabled[j]=kind==0||live_slot<0||(practice.notes&(1u<<lane));
                     }
                 }
                 for(int hand=0;hand<2;++hand)
@@ -2658,7 +2667,7 @@ int psvr2_selftest(const char *tag, int frames)
                     chart_visible[side][j]=encore_world_project(&optical[side],&eyes[side],points[j],chart_uv[side][j]);
                     if(chart_visible[side][j]<0)valid=0;
                 }
-                gpu_rc=!valid?-1:live_slot>=0?encore_probe_gpu_chart(chart_uv,chart_visible,lanes):
+                gpu_rc=!valid?-1:live_slot>=0?encore_probe_gpu_chart(chart_uv,chart_visible,lanes|practice.hit_flash):
                      encore_probe_gpu_markers(chart_uv,chart_visible);
                 if(!gpu_rc)++rhythm_frames;
                 if(!gpu_rc){
@@ -2720,7 +2729,7 @@ int psvr2_selftest(const char *tag, int frames)
             if(live_count<4||i%150==0)
                 XRLOG("VR_PROBE LIVE frame=%d slot=%d prior=%lu shown=%lu copy_us=%lu hits=%u misses=%u",
                       i,live_slot,(unsigned long)previous,(unsigned long)status[3],
-                      (unsigned long)copy_us,rhythm.hits,rhythm.misses);
+                      (unsigned long)copy_us,practice.hits,practice.misses);
         }
         if (psvr2_submit(display_slot, (uint64_t)i, disp, &dev, tl, tr) != 0) {
             XRLOG("selftest %s: submission failed at %d", tag, i);
@@ -2762,6 +2771,9 @@ int psvr2_selftest(const char *tag, int frames)
             ++phase_done;
         }
     }
+    encore_practice_audio_stop();
+    XRLOG("VR_PROBE PRACTICE result hits=%u misses=%u wrong=%u best_combo=%u score=%u audio_open=%d audio_frames=%lu",
+          practice.hits,practice.misses,practice.wrong,practice.best_combo,practice.score,practice_audio,(unsigned long)encore_practice_audio_frames());
     for(int side=0;side<2;++side){
         if(haptic_sent[side])psvr2_haptic(side,0.f,0.f);
         XRLOG("VR_PROBE BATCH Sense %d connected=%lu tracked=%lu trigger_samples=%lu buttons_seen=0x%x touches_seen=0x%x haptic_requested=%u haptic_api_ok=%u",
@@ -2769,7 +2781,7 @@ int psvr2_selftest(const char *tag, int frames)
     }
     XRLOG("VR_PROBE BATCH highway displayed neutral=%lu left=%lu right=%lu both=%lu (successful submissions)",
           (unsigned long)display_counts[0],(unsigned long)display_counts[1],(unsigned long)display_counts[2],(unsigned long)display_counts[3]);
-    XRLOG("VR_PROBE V11 rhythm frames=%lu lanes_seen=0x%x hits=%u misses=%u off_window=%u (chart clock reset at live start)",
+    XRLOG("VR_PROBE V12 private rhythm frames=%lu lanes_seen=0x%x hits=%u misses=%u off_window=%u (private diagnostic only; see PRACTICE result)",
           (unsigned long)rhythm_frames,rhythm_inputs,rhythm.hits,rhythm.misses,rhythm.early);
     XRLOG("VR_PROBE BATCH summary phases_completed=%d/3 world_private_frames=%lu origin=%d",
           phase_done,(unsigned long)world_count,world_ready);
@@ -2781,7 +2793,7 @@ int psvr2_selftest(const char *tag, int frames)
     XRLOG("VR_PROBE LIVE summary frames=%lu reuses=%lu blocked=%d mean_copy_us=%.1f max_copy_us=%lu",
           (unsigned long)live_count,(unsigned long)live_reuses,live_blocked,
           live_count?(double)live_copy_total/(double)live_count:0.0,(unsigned long)live_copy_max);
-    XRLOG("VR_PROBE V11 summary origin_candidate=%d replay_count=%lu replay_over_11ms=%lu flip_valid=%lu flip_invalid=%lu flip_regressed=%lu flip_max_lag=%lu",
+    XRLOG("VR_PROBE V12 summary origin_candidate=%d replay_count=%lu replay_over_11ms=%lu flip_valid=%lu flip_invalid=%lu flip_regressed=%lu flip_max_lag=%lu",
           gate.anchored,(unsigned long)gpu_count,(unsigned long)gpu_over,(unsigned long)flips.valid,
           (unsigned long)flips.invalid,(unsigned long)flips.regressed,(unsigned long)flips.max_lag);
     psvr2_output_stop();

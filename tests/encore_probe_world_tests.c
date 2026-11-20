@@ -22,8 +22,8 @@ int main(void){
         eyes[s].quat[0]=NAN;
         assert(encore_world_project(&optical[s],&eyes[s],points[1],uv[s])==-1);
     }
-    assert(encore_batch_phase(1)==0&&encore_batch_phase(900)==0);
-    assert(encore_batch_phase(901)==1&&encore_batch_phase(2100)==1);
-    assert(encore_batch_phase(2101)==2&&encore_batch_end(2)==2700);
+    assert(encore_batch_phase(1)==0&&encore_batch_phase(450)==0);
+    assert(encore_batch_phase(451)==1&&encore_batch_phase(570)==1);
+    assert(encore_batch_phase(571)==2&&encore_batch_end(2)==2370);
     puts("PASS tracked world projection, motion parallax, clipping, invalid pose and batch boundaries");
 }

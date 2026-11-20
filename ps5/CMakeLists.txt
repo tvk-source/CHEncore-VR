@@ -150,6 +150,7 @@ if(ENCORE_VR_PROBE)
     target_sources(samples PRIVATE
         vr/native_probe.cpp
         vr/probe_vulkan.cpp
+        vr/probe_practice.cpp
         vr/ghost/psvr2.c
         vr/ghost/xr_log.c
         vr/ghost/gvr_stats.c)

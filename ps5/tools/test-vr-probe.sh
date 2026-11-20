@@ -32,3 +32,6 @@ python3 tests/encore_asset_build_dir_tests.py
 
 "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -pedantic tests/encore_probe_retirement_tests.c -o "$tmp/encore_probe_retirement_tests"
 "$tmp/encore_probe_retirement_tests"
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pedantic tests/encore_probe_practice_tests.cpp ps5/vr/probe_practice.cpp examples/cloneheronative/gameplay/song_pipeline.cpp -o "$tmp/encore_probe_practice_tests"
+"$tmp/encore_probe_practice_tests"

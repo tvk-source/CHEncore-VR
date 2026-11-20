@@ -279,3 +279,25 @@ real song assets or gameplay engine yet. The first 20 seconds are the
 same static preview; look forward at the live phase transition.
 Native build and hardware behavior unverified. Report whether motion
 is visible, world anchored, and comfortable; log LIVE summary.
+
+## V11 hardware log and V12 practice bridge (2026-11-20)
+V11 submitted 2700/2700, including 600 live copies/reuses, 0 blocked,
+60.13 live FPS, average copy 649us max 820us, GPU mean 3614.5us max4908us.
+No queue-full/errors or budget overruns. 2699 valid flip observations.
+All five input lanes seen; 4 hits, 15 misses, 35 off-window events.
+Visual comfort/world-lock not independently reported. Haptics and
+VO_BUSY remain unresolved. Flip age remains an experimental heuristic.
+V12 replaces live synthetic judge with actual existing SongChart,
+InputEvaluator, and submitVisibleNotes from CHEncore song_pipeline.
+Warmup 450 frames at90Hz (~5s), 120 at120Hz (~1s), 1800 at60fps (~30s).
+Original built-in 56-note chart, 120 BPM, 1..28.5s, ±120ms window,
+score/combo and hit flash. Buttons L2/square/triangle/cross/R2.
+The optional quiet synthesized metronome uses existing platform 48kHz
+audio callback; no disk access, no assets. Audio-open failure leaves
+silent practice; sample count is delivered PCM, not measured headset
+playback or calibrated A/V sync. Audio stops before VR teardown.
+Original engine judging is integrated; the original full renderer,
+song parser/library, commercial songs and instrument play remain pending.
+Same validated live presentation path and safety gate, longer exposure
+only. Stop immediately if uncomfortable. Keep previous working package.
+Host regression test added; native integration unverified.

@@ -39,10 +39,10 @@ static inline int encore_world_project(const encore_probe_eye *optical,const psv
     uv[1]=(optical->up-v[1]/(-v[2]))/(optical->up+optical->down);
     return uv[0]>.02f&&uv[0]<.98f&&uv[1]>.02f&&uv[1]<.98f;
 }
-/* 10 seconds nominal at each mode. Frame numbers stay monotonic. */
+/* 5 seconds warmup, 1 second 120Hz regression, 30 seconds live. */
 static inline int encore_batch_phase(int frame) {
-    return frame<=900?0:frame<=2100?1:2;
+    return frame<=450?0:frame<=570?1:2;
 }
 static inline int encore_batch_end(int phase) {
-    return phase==0?900:phase==1?2100:2700;
+    return phase==0?450:phase==1?570:ENCORE_PROBE_FRAMES;
 }
