@@ -384,11 +384,6 @@ bool Downloader::beginTransfer(const char* url, const std::string* postBody, con
     return true;
 }
 
-const char* Downloader::coverPath(size_t resultIndex) const noexcept {
-    if (resultIndex >= resultCount_) return "";
-    return results_[resultIndex].albumArtPath.c_str();
-}
-
 bool Downloader::coverPending(size_t resultIndex) const noexcept {
     if (resultIndex >= resultCount_ || !transfer_ || !transfer_->isCover) return false;
     return transfer_->coverFinalPath == results_[resultIndex].albumArtPath;
@@ -728,6 +723,12 @@ bool Downloader::coverPending(size_t) const noexcept { return false; }
 bool Downloader::parseSearchResponse() noexcept { return false; }
 
 #endif
+
+// Pure result accessor, available even in the offline Linux graphics build.
+const char* Downloader::coverPath(size_t resultIndex) const noexcept {
+    if (resultIndex >= resultCount_) return "";
+    return results_[resultIndex].albumArtPath.c_str();
+}
 
 void Downloader::reset() noexcept {
     cancel();

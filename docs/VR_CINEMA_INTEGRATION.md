@@ -101,3 +101,10 @@ startup audio and native audio QA actions; finish the intro in the silent
 host reference so menu widgets can appear. Native PS5 audio remains unchanged.
 Added an isolated adapter linkage test. Full host build and run still need
 verification; successful shader compilation is not a successful game build.
+
+The df90041 host audio fix compiled successfully on the tester's machine.
+The only reported remaining link error was Downloader::coverPath(size_t).
+Move the existing pure accessor out of the native-only conditional so
+both builds share exactly the same implementation. Native download and
+cover-fetch behavior are unchanged; the host browser remains offline.
+Full host link and GPU reference execution still need verification.
