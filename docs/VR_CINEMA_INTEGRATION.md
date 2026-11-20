@@ -90,3 +90,14 @@ shaders and drives the existing host reference build; reuses assets from
 normal dist or dist-vr-probe. The script reports failure if no cinema PASS
 or any cinema FAIL is logged. Build and GPU run remain unverified until
 executed on a machine with repo dependencies. No console test requested.
+
+## Linux reference compilation fix
+The initial cinema reference build compiled both shaders, but failed in
+cloneheronative.cpp: shared gameplay/UI paths referred to songAudio and
+AudioStemMixer::UiSound although PS5_HOST_REFERENCE excluded them. The
+silent HostReferenceAudio adapter reuses the existing cue enum and preserves
+shared gameplay side effects without linking the native mixer. Guard native
+startup audio and native audio QA actions; finish the intro in the silent
+host reference so menu widgets can appear. Native PS5 audio remains unchanged.
+Added an isolated adapter linkage test. Full host build and run still need
+verification; successful shader compilation is not a successful game build.

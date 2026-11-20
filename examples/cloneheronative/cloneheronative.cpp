@@ -66,7 +66,9 @@ const char* stbi_failure_reason(void);
 #include "gameplay/highway_view.hpp"
 #include "gameplay/pc_player_camera.hpp"
 #include "ps5_samples.h"
-#if !defined(PS5_HOST_REFERENCE)
+#if defined(PS5_HOST_REFERENCE)
+#include "gameplay/host_reference_audio.hpp"
+#else
 #include "gameplay/audio_player.hpp"
 #include "platform.h"
 #endif
@@ -1396,6 +1398,8 @@ public:
     std::string previewAudioWorkerMusic;
     double previewAudioWorkerMs{};
     std::string previewAudioWorkerChartPath,previewAudioWorkerAudioPath;
+#else
+    rhythm::HostReferenceAudio songAudio;
 #endif
     struct LocalSong {
         std::string title, artist, album, genre, year, charter, source, chartPath, albumArtPath, loadingPhrase;
@@ -2952,8 +2956,13 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
                 else if(player==0 && (press.action=="profile-render" || press.action=="profile-unbatched")) {
                     renderProfileQa=true;renderBatching=press.action!="profile-unbatched";
                 }
+#if !defined(PS5_HOST_REFERENCE)
                 else if(player==0 && press.action=="audio-source-loss")songAudio.sourceUnavailable();
                 else if(player==0 && press.action=="audio-load-delay")audioDelayQa=true;
+#else
+                else if(player==0 && (press.action=="audio-source-loss" || press.action=="audio-load-delay"))
+                    std::fprintf(stderr,"host reference: native audio QA unavailable\n");
+#endif
                 else if(player==0 && press.action=="highway-effects")activeProfile.highwayEffects=true;
                 else if(player==0 && press.action.rfind("pulse-qa:",0)==0 && screen==Screen::Gameplay) {
                     const int kind=std::atoi(press.action.c_str()+9);
@@ -8222,9 +8231,11 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
         const bool usbQa=ps5.frameBudget && std::any_of(ps5Presses.begin(),ps5Presses.end(),[](const auto& p){return p.action=="discover-usb" || p.action=="discover-midi";});
         if(!ps5.frameBudget || usbQa)usbControllers.start(getAssetPath()+"controller_profiles",CH_USERDATA "/controllers");
         if(!ps5.frameBudget || midiDiscoveryQa)rhythm::logDiagnostic("USB MIDI discovery started=%d",usbMidi.start());
+#if !defined(PS5_HOST_REFERENCE)
         const std::string uiSoundPath = rhythm::assets::currentRoot() + "cloneheronative/sounds";
         if (!songAudio.loadUiSounds(uiSoundPath.c_str(),(getAssetPath()+"cloneheronative/sounds/menu_intro.wav").c_str()))
             fprintf(stderr, "[audio] PC UI sound assets could not be loaded\n");
+#endif
         overlayFontPath = rhythm::assets::currentRoot() + "pc_menu/Lato-Regular.ttf";
         overlayFontSize = 22.0f;
         gameplayNameFont=ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-BoldItalic.ttf").c_str(),pc_gameplay_labels::nameSize);
@@ -8249,10 +8260,16 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
                    static_cast<unsigned>(now_seconds() * 1000000.0));
         scanLocalSongs();
         // Charts/audio are prepared on demand; booting a menu needs no gameplay load.
+#if !defined(PS5_HOST_REFERENCE)
         if (!audioOutputStarted) {
             applyAudioGains();
             audioOutputStarted = audio_start(&rhythm::AudioStemMixer::audioFill, &songAudio);
         }
+#else
+        // The renderer reference has no native audio device or intro cue.
+        menuIntroStarted=menuIntroFinished=true;
+        menuWidgetRevealAt=ImGui::GetTime();
+#endif
         ui.visible = true;
         screen = Screen::MainMenu;
         restartSong();
