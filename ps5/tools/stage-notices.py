@@ -125,6 +125,16 @@ def main():
                     submodules=({"external/glm": dict(remote="https://github.com/g-truc/glm", revision=glm)}
                                 if (ROOT / "external/glm/.git").exists() else {}))))
 
+    # Carry all vendored Ghost VR provenance for the optional native probe.
+    for filename in ("LICENSE", "ORIGIN.md", "THIRD_PARTY_NOTICES.md"):
+        write_text(out / "ghost-vr" / filename, ROOT, rev, "ps5/vr/ghost/" + filename)
+    parts.append(dict(
+        id="ghost-vr", name="Ghost VR native headset backend (optional probe)",
+        licence="GPL-3.0-or-later", copyright=["Copyright (C) 2026 theghostonline"],
+        artifacts=["eboot.bin (probe build)", "sce_module/encore-engine.prx (probe build)"],
+        texts="licenses/ghost-vr/",
+        source=dict(kind="git", path=str(ROOT), remote=remote, revision=rev, dirty=dirty)))
+
     # The UI kit, in a title that has the module
     if (PS5 / "ui/setup-kit.sh").exists():
         kit = Path(ROOT.parent / "PS5_VKHomebrewUI")

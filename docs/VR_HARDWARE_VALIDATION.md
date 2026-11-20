@@ -12,4 +12,4 @@ Target: a native CHEncore-VR application on PS5 firmware 7.61, experimental titl
 
 ## Current evidence
 
-The foundation tests and mock-hardware adapter passed on the user's Linux machine. Native PS5 compilation, headset output and all later gates are still unverified. See [PSVR2_PORT.md](PSVR2_PORT.md) for integration details and [BUILDING.md](../BUILDING.md) for pinned build dependencies. No probe build flag is available until the implementation is committed.
+The foundation tests and mock-hardware adapter passed on the user's Linux machine. Native PS5 compilation, headset output and all later gates are still unverified. See [PSVR2_PORT.md](PSVR2_PORT.md) for integration details and [BUILDING.md](../BUILDING.md) for pinned build dependencies. The optional ENCORE_VR_PROBE build and mock tests are now implemented; see [VR_HARDWARE_PROBE.md](VR_HARDWARE_PROBE.md). Cross-compilation and hardware validation remain outstanding.

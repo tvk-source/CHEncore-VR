@@ -1,0 +1,58 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "native_probe.hpp"
+#include "ghost/psvr2.h"
+#include "../src/platform.h"
+#include <cstdint>
+#include <cstdio>
+#include <cmath>
+
+struct ProbeSoftwareVersion { uint64_t size; char text[0x1c]; uint32_t version; };
+extern "C" int sceKernelGetSystemSwVersion(ProbeSoftwareVersion*);
+extern "C" int sceSystemServiceLoadExec(const char*, const char* const*);
+namespace {
+constexpr int Frames = 180;
+int finish(int status) {
+    say("VR_PROBE result=%s code=%d", status == 0 ? "SUBMISSIONS_PASS" : "FAIL_OR_INCOMPLETE", status);
+    std::fflush(stderr);
+    const int rc = sceSystemServiceLoadExec("exit", nullptr);
+    say("VR_PROBE shell exit returned 0x%08x", unsigned(rc));
+    return status ? status : 1;
+}
+}
+int encore_vr_native_probe() {
+    say("VR_PROBE begin: PPSA98743, native headset, no Vulkan or game assets");
+    ProbeSoftwareVersion version{};
+    version.size = sizeof(version);
+    const int rc = sceKernelGetSystemSwVersion(&version);
+    const unsigned fw = version.version >> 16;
+    say("VR_PROBE firmware rc=0x%08x version=0x%04x", unsigned(rc), fw);
+    if (rc != 0 || fw != 0x0761u) {
+        say("VR_PROBE stopped: only firmware 7.61 is enabled");
+        return finish(2);
+    }
+    // Isolate Hmd2 output from TV mirroring and DualSense ownership.
+    psvr2_set_dualsense(0);
+    psvr2_set_mirror(0);
+    if (psvr2_init_output() != 0) {
+        say("VR_PROBE initialization failed");
+        psvr2_shutdown();
+        return finish(3);
+    }
+    psvr2_info info{};
+    psvr2_get_info(&info);
+    say("VR_PROBE status=%d worn=%d panel=%ux%u ipd=%.4f fov=%.4f %.4f %.4f %.4f",
+        info.status, info.worn, info.panel_w, info.panel_h, double(info.ipd),
+        double(info.fov[0]), double(info.fov[1]), double(info.fov[2]), double(info.fov[3]));
+    bool validFov = true;
+    for (float t : info.fov) validFov = validFov && std::isfinite(t) && t > 0.0f;
+    int submitted = -1;
+    if (info.status == 0 && info.panel_w && info.panel_h && validFov &&
+        std::isfinite(info.ipd) && info.ipd > 0.0f && psvr2_worn())
+        submitted = psvr2_selftest("encore-native-761", Frames);
+    else
+        say("VR_PROBE skipped: headset not ready, not worn, or invalid optical data");
+    say("VR_PROBE submissions=%d requested=%d", submitted, Frames);
+    psvr2_shutdown();
+    say("VR_PROBE shutdown returned; inspect teardown codes above");
+    return finish(submitted == Frames ? 0 : 4);
+}

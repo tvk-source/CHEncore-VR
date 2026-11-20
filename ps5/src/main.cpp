@@ -394,8 +394,17 @@ void runMenu()
 
 } // namespace
 
+#if defined(ENCORE_VR_PROBE)
+#include "../vr/native_probe.hpp"
+#endif
+
 int main(int argc,char** argv)
 {
+#if defined(ENCORE_VR_PROBE)
+    // Bypass the game's updater, imported assets, pad polling and Vulkan.
+    platform_init(PS5_TITLE_NAME);
+    return encore_vr_native_probe();
+#endif
 #if !defined(PS5_HOST_REFERENCE)
 	if(encore_update_process_arguments(argc,argv))return 0;
 	if(encore_recover_application_update())return 0;

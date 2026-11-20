@@ -22,6 +22,15 @@ set(PS5_VULKAN_DIR "${ROOT}/../PS5_Vulkan" CACHE PATH "the PS5_Vulkan checkout (
 # The host reference build: the same code on the PC's Vulkan driver, with a
 # headless surface, reading and writing in PS5_HOST_APP_ROOT (tools/host-reference.sh)
 option(PS5_HOST_REFERENCE "build for the PC, as a reference for the console's pictures" OFF)
+option(ENCORE_VR_PROBE "Dedicated native PSVR2 hardware diagnostic; never starts gameplay" OFF)
+if(ENCORE_VR_PROBE AND PS5_HOST_REFERENCE)
+    message(FATAL_ERROR "ENCORE_VR_PROBE requires the native PS5 toolchain")
+endif()
+if(ENCORE_VR_PROBE)
+    file(WRITE "${CMAKE_BINARY_DIR}/encore-vr-probe.txt" "native probe\n")
+else()
+    file(REMOVE "${CMAKE_BINARY_DIR}/encore-vr-probe.txt")
+endif()
 set(PS5_HOST_APP_ROOT "${CMAKE_BINARY_DIR}/app" CACHE PATH "the host reference build's title folder")
 
 # Chorus search and package transfer use the PS5 SDK's native HTTP/2 client.
@@ -137,6 +146,14 @@ add_library(samples OBJECT
 	src/example_ps5.cpp
 	${platform_source}
     ${audio_source})
+if(ENCORE_VR_PROBE)
+    target_sources(samples PRIVATE
+        vr/native_probe.cpp
+        vr/ghost/psvr2.c
+        vr/ghost/xr_log.c
+        vr/ghost/gvr_stats.c)
+    target_compile_definitions(samples PRIVATE ENCORE_VR_PROBE=1)
+endif()
 target_compile_definitions(samples PRIVATE
 	VK_EXAMPLE_PS5
 	"PS5_TITLE_NAME=\"${PS5_TITLE_NAME}\""

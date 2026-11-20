@@ -141,7 +141,11 @@ fi
 
 # The title folder
 title_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["titleId"])' "$param")
-dist_root=${PS5_DIST_ROOT:-$root/dist}
+if [[ -f $work/encore-vr-probe.txt ]]; then
+    dist_root=${PS5_DIST_ROOT:-$root/dist-vr-probe}
+else
+    dist_root=${PS5_DIST_ROOT:-$root/dist}
+fi
 app="$dist_root/$title_id"
 mkdir -p "$app/sce_sys/about" "$app/sce_module" "$app/shaders/glsl"
 python3 "$ps5/tools/convert-runtime-module.py" "$work/link/about-native.elf" "$app/sce_sys/about/right.sprx" --tool "$tool"
@@ -149,6 +153,19 @@ python3 "$ps5/tools/convert-runtime-module.py" "$work/link/engine-native.elf" "$
 "$tool" self --sign --in "$work/eboot.elf.new" --out "$app/eboot.bin" --magic 0x1D3D154F
 "$tool" self --inspect --file "$app/eboot.bin" > /dev/null
 cp "$param" "$app/sce_sys/param.json"
+if [[ -f $work/encore-vr-probe.txt ]]; then
+    # Native VR title bits from GhostVR make_title.py; no hand-tracking bit.
+    python3 - "$app/sce_sys/param.json" <<'PY'
+import json, sys
+from pathlib import Path
+p = Path(sys.argv[1])
+d = json.loads(p.read_text())
+d["attribute"] = 0x62000000
+d["attribute3"] |= 0x400 | 0x800
+d["localizedParameters"]["en-US"]["titleName"] = "CH: Encore VR Probe"
+p.write_text(json.dumps(d, indent=2) + "\n")
+PY
+fi
 for asset in icon0.png pic0.dds pic1.dds snd0.at9; do
     if [[ -f $ps5/assets/ch-branding/$asset ]]; then cp "$ps5/assets/ch-branding/$asset" "$app/sce_sys/$asset"; continue; fi
     [[ -f $ps5/sce_sys/$asset ]] && cp "$ps5/sce_sys/$asset" "$app/sce_sys/$asset"

@@ -24,3 +24,6 @@ c++ -std=c++17 -Wall -Wextra -Werror -pedantic tests/encore_vr_core_tests.cpp -o
 ```
 
 Do not install the current scaffold expecting VR. Do not use a 13.60 offset table on 7.61. The fork is not release-ready.
+
+## Native hardware diagnostic
+The experimental [probe build](VR_HARDWARE_PROBE.md) now has a dedicated opt-in entry point and SDK link path. Cross-compilation, native imports and physical hardware are unverified. Do not treat mock tests as successful headset output.

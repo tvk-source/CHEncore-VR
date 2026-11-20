@@ -22,16 +22,22 @@ ps5=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 root=$(dirname "$ps5")
 vulkan=$(cd -- "${PS5_VULKAN_DIR:-$root/../PS5_Vulkan}" && pwd)
 sdk=$(bash "$ps5/tools/setup-sdk.sh")
-build="$root/build/ps5"
-dist_root=${PS5_DIST_ROOT:-$root/dist}
+# Separate cache and staging directory; never replace the ordinary build.
+probe=${ENCORE_VR_PROBE:-0}
+case "$probe" in
+    0|OFF) probe=OFF; build="$root/build/ps5"; dist_root=${PS5_DIST_ROOT:-$root/dist} ;;
+    1|ON) probe=ON; build="$root/build/ps5-vr-probe"; dist_root=${PS5_DIST_ROOT:-$root/dist-vr-probe} ;;
+    *) echo "ENCORE_VR_PROBE must be 0 or 1" >&2; exit 2 ;;
+esac
+export PS5_DIST_ROOT="$dist_root"
 ninja=$(command -v ninja || echo "$HOME/.local/bin/ninja")
 export PS5_CLANG=${PS5_CLANG:-$(command -v clang || true)}
 
-if [[ ! -f $build/build.ninja ]]; then
+if [[ ! -f $build/build.ninja ]] || [[ $probe == ON ]]; then
     mkdir -p "$build"
     cmake -S "$ps5" -B "$build" -G Ninja -DCMAKE_MAKE_PROGRAM="$ninja" \
         -DCMAKE_TOOLCHAIN_FILE="$sdk/toolchain/prospero.cmake" \
-        -DPS5_VULKAN_DIR="$vulkan" -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=OFF > "$build.configure.log" 2>&1 \
+        -DENCORE_VR_PROBE="$probe" -DPS5_VULKAN_DIR="$vulkan" -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=OFF > "$build.configure.log" 2>&1 \
         || { cat "$build.configure.log" >&2; exit 1; }
 fi
 "$ninja" -C "$build" title

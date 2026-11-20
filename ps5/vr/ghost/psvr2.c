@@ -269,7 +269,11 @@ static int resolve_module(int h, const char *file, slot_t *slots, size_t n,
         if (!tried_base) {
             base = module_base(h, file, &mi);
             for (size_t k = 0; base && k < tables_n && !t; k++)
-                if (anchor_matches(&mi, base, tables[k].anchor))
+                if (
+#if defined(ENCORE_VR_PROBE)
+                    tables[k].fw == 761 &&
+#endif
+                    anchor_matches(&mi, base, tables[k].anchor))
                     t = &tables[k];
 #ifdef PS5XR_TEST_EXPORTS_FILE
             t = NULL; /* test build: as on a firmware with no table (M7's proof on 13.60) */
@@ -283,13 +287,16 @@ static int resolve_module(int h, const char *file, slot_t *slots, size_t n,
         }
         *slots[i].slot = NULL;
         for (size_t j = 0; t && j < t->count; j++)
-            if (!strcmp(t->exports[j].name, slots[i].name))
+            if (!strcmp(t->exports[j].name, slots[i].name) &&
+                in_code(&mi, base + t->exports[j].offset))
                 *slots[i].slot = (void *)(base + t->exports[j].offset);
+#if !defined(ENCORE_VR_PROBE)
         if (!t && base) {
             const uintptr_t off = exports_file_offset(file, slots[i].name);
             if (off && in_code(&mi, base + off))
                 *slots[i].slot = (void *)(base + off);
         }
+#endif
         if (!*slots[i].slot) {
             XRLOG("psvr2: missing %s (no table for this firmware and no exports file from the app)", slots[i].name);
             ok = 0;
@@ -355,6 +362,7 @@ static struct {
     /* Hosted (psvr2_set_defer_output): Hmd2 opened by xrGetSystem, the
      * tracker and reprojection started by the session. */
     int opened, output_failed, want_output;
+    int hmd_initialized, tracker_initialized, tracker_registered;
     uint64_t last_display_us; /* the last frame's predicted display time */
     uint64_t last_begin_us;   /* when the last frame began */
     int live;                 /* Hmd2 predicts display times ahead of now */
@@ -1398,6 +1406,7 @@ static int psvr2_init_impl(void)
         psvr2_tell("sceHmd2Initialize", rc, TELL_HEADSET);
         return -1;
     }
+    H.hmd_initialized = 1;
     dump_identity();
     float fov[16];
     memset(fov, 0, sizeof fov);
@@ -1449,7 +1458,9 @@ output:
     *(uint32_t *)(ip + 0x28) = qout[1];
     *(uint32_t *)(ip + 0x2c) = qout[2];
     rc = sceVrTracker2Initialize(ip);
+    H.tracker_initialized = rc == 0;
     int rc2 = rc == 0 ? sceVrTracker2RegisterDevice(0, H.hmd) : -1;
+    H.tracker_registered = rc2 == 0;
     XRLOG("psvr2: tracker init 0x%08x register 0x%08x", rc, rc2);
     if (rc != 0 || rc2 != 0) {
         psvr2_tell(rc ? "sceVrTracker2Initialize" : "sceVrTracker2RegisterDevice", rc ? rc : rc2, TELL_HEADSET);
@@ -1931,7 +1942,7 @@ static int apply_mode(int mode)
     XRLOG("psvr2: output mode %d (0x%lx): configure 0x%08x, render config 0x%08x", mode,
           (unsigned long)vr, c1, c2);
     H.mode = mode;
-    return c1;
+    return c1 ? c1 : c2;
 }
 
 /* After EnableVrMode the headset's link retrains (USB-C DP, HDCP) for about a
@@ -1940,7 +1951,7 @@ static int apply_mode(int mode)
  * title that sent its first frames 1 ms after EnableVrMode). Wait until the
  * VR port counts vblanks, at most 5 s. */
 int sceVideoOutGetVblankStatus(int handle, void *status);
-static void wait_display_live(void)
+static int wait_display_live(void)
 {
     uint64_t st[32] = {0};
     const uint64_t t0 = psvr2_now_us();
@@ -1952,13 +1963,14 @@ static void wait_display_live(void)
         count = st[0];
         if (rc == 0 && first == UINT64_MAX)
             first = count;
-        if (rc == 0 && count >= first + 3)
+        if (rc == 0 && first != UINT64_MAX && count >= first && count - first >= 3)
             break;
         sceKernelUsleep(5000);
     }
     XRLOG("psvr2: VR display live after %.0f ms (vblank rc 0x%08x count %lu -> %lu)",
           (double)(psvr2_now_us() - t0) / 1000.0, rc, (unsigned long)(first == UINT64_MAX ? 0 : first),
           (unsigned long)count);
+    return rc == 0 && first != UINT64_MAX && count >= first && count - first >= 3 ? 0 : -1;
 }
 
 int psvr2_vblank(uint64_t *count, uint64_t *time_us)
@@ -1981,6 +1993,10 @@ int psvr2_output_start(uint32_t eye_w, uint32_t eye_h, void *const *buffers, int
     mirror_apply(); /* before VR mode, as Horizon does */
     const uint64_t vr = mode == PSVR2_MODE_90 ? VR_MODE_90HZ : VR_MODE_120HZ;
     int rc = sceHmd2ReprojectionEnableVrMode(vr);
+    if (rc != 0) {
+        XRLOG("psvr2: EnableVrMode failed 0x%08x", rc);
+        return -1;
+    }
     H.vh = sceVideoOutOpen(0xff, 32, 0, NULL);
     XRLOG("psvr2: EnableVrMode(0x%lx) -> 0x%08x, VR port 0x%08x", (unsigned long)vr, rc, H.vh);
     static int told_output;
@@ -2017,8 +2033,12 @@ int psvr2_output_start(uint32_t eye_w, uint32_t eye_h, void *const *buffers, int
         return -1;
     }
     H.mode = PSVR2_MODE_90;
-    apply_mode(mode);
-    wait_display_live();
+    H.active = 1;
+    if (apply_mode(mode) != 0 || wait_display_live() != 0) {
+        XRLOG("psvr2: output configuration or vblank validation failed");
+        psvr2_output_stop();
+        return -1;
+    }
     H.last_display_us = H.last_begin_us = 0;
     H.npending = H.have_last = 0;
     H.pace_vb = H.pace_frames = 0;
@@ -2339,11 +2359,12 @@ void psvr2_shutdown(void)
 {
     psvr2_output_stop();
     if (!H.loaded) {
-        if (H.opened) {
-            const int r4 = sceHmd2Close(H.hmd), r5 = sceHmd2Terminate();
-            H.opened = 0;
-            XRLOG("psvr2: shut down before output (hmd 0x%08x 0x%08x)", r4, r5);
-        }
+        const int r1 = H.tracker_registered ? sceVrTracker2UnregisterDevice(H.hmd) : 0;
+        const int r2 = H.tracker_initialized ? sceVrTracker2Finalize() : 0;
+        const int r4 = H.opened ? sceHmd2Close(H.hmd) : 0;
+        const int r5 = H.hmd_initialized ? sceHmd2Terminate() : 0;
+        H.opened = H.hmd_initialized = H.tracker_initialized = H.tracker_registered = 0;
+        XRLOG("psvr2: partial shutdown (tracker 0x%08x 0x%08x, hmd 0x%08x 0x%08x)", r1, r2, r4, r5);
         return;
     }
     pthread_mutex_lock(&pad_lock);
@@ -2382,19 +2403,19 @@ void psvr2_shutdown(void)
     const int r4 = sceHmd2Close(H.hmd);
     const int r5 = sceHmd2Terminate();
     H.loaded = 0;
-    H.opened = 0;
+    H.opened = H.hmd_initialized = H.tracker_initialized = H.tracker_registered = 0;
     XRLOG("psvr2: shut down (tracker 0x%08x 0x%08x, reprojection 0x%08x, hmd 0x%08x 0x%08x)", r1,
           r2, r3, r4, r5);
 }
 
 /* -- self test ---------------------------------------------------------------- */
-/* frames solid-colour frames straight to Hmd2 (no Vulkan): how many the
- * headset took. For telling a host process's environment apart from the
- * runtime: a title can run it before and after it changes its credentials. */
+/* Native bounded diagnostic: identical, low-brightness cross in each eye.
+ * No Vulkan or changing credentials. Returns number of successful submissions. */
 int psvr2_selftest(const char *tag, int frames)
 {
     enum { EYE = 1024, NBUF = 3 };
     static void *buf[NBUF];
+    if (frames < 1 || frames > 180) return -1;
     if (psvr2_init_output() != 0) {
         XRLOG("selftest %s: init failed", tag);
         return -1;
@@ -2405,9 +2426,15 @@ int psvr2_selftest(const char *tag, int frames)
         if (!buf[b])
             return -1;
         uint32_t *p = buf[b];
-        const uint32_t colour = b == 0 ? 0xff2020c0u : b == 1 ? 0xff20c020u : 0xffc02020u;
-        for (size_t i = 0; i < (size_t)2 * EYE * EYE; i++)
-            p[i] = colour;
+        // A small cross, identical in all three buffers; no alternating colours.
+        for (unsigned y = 0; y < EYE; ++y)
+            for (unsigned x = 0; x < 2 * EYE; ++x) {
+                const unsigned ex = x % EYE;
+                const int dx = (int)ex - EYE/2, dy = (int)y - EYE/2;
+                const int cross = (abs(dx) <= 3 && abs(dy) <= 24) ||
+                                  (abs(dy) <= 3 && abs(dx) <= 24);
+                p[(size_t)y * 2 * EYE + x] = cross ? 0xff707070u : 0xff202020u;
+            }
     }
     const uint64_t qf0 = H.stats.queue_full, err0 = H.stats.errors, fr0 = H.stats.frames;
     if (psvr2_output_start(EYE, EYE, buf, NBUF, PSVR2_MODE_90) != 0) {
@@ -2418,15 +2445,35 @@ int psvr2_selftest(const char *tag, int frames)
     const float tr[4] = {H.fov[1], H.fov[0], H.fov[2], H.fov[3]};
     const uint64_t t0 = psvr2_now_us();
     int ok = 0;
-    for (int i = 1; i <= frames; i++) {
+    // Give the tracker up to 3 seconds to settle before beginning any frame.
+    psvr2_pose dev = {{0, 0, 0}, {0, 0, 0, 1}}, eyes[2];
+    float lv[3], av[3];
+    int tracked = 0;
+    while (psvr2_now_us() - t0 < 3000000u && psvr2_worn() && !psvr2_exit_requested()) {
+        if (psvr2_head(psvr2_now_us(), &dev, eyes, lv, av)) { tracked = 1; break; }
+        sceKernelUsleep(10000);
+    }
+    if (!tracked) XRLOG("selftest %s: tracking not ready", tag);
+    for (int i = 1; tracked && i <= frames; i++) {
+        if (!psvr2_worn() || psvr2_exit_requested() || psvr2_now_us() - t0 >= 8000000u) {
+            XRLOG("selftest %s: stopped (wear/exit/deadline)", tag);
+            break;
+        }
         uint64_t disp = 0;
-        if (psvr2_begin_frame((uint64_t)i, &disp) != 0)
-            continue;
-        psvr2_pose dev = {{0, 0, 0}, {0, 0, 0, 1}}, eyes[2];
-        float lv[3], av[3];
-        psvr2_head(disp, &dev, eyes, lv, av);
-        if (psvr2_submit(i % NBUF, (uint64_t)i, disp, &dev, tl, tr) == 0)
-            ok++;
+        if (psvr2_begin_frame((uint64_t)i, &disp) != 0) {
+            XRLOG("selftest %s: begin failed at %d", tag, i);
+            break;
+        }
+        if (!psvr2_head(disp, &dev, eyes, lv, av)) {
+            psvr2_repeat_frame((uint64_t)i);
+            XRLOG("selftest %s: tracking lost at %d", tag, i);
+            break;
+        }
+        if (psvr2_submit((i-1) % NBUF, (uint64_t)i, disp, &dev, tl, tr) != 0) {
+            XRLOG("selftest %s: submission failed at %d", tag, i);
+            break;
+        }
+        ok++;
     }
     const double secs = (double)(psvr2_now_us() - t0) / 1e6;
     XRLOG("selftest %s: %d of %d frames in %.2f s (%.1f fps), queue-full waits %lu, errors %lu, worn %d", tag, ok,
