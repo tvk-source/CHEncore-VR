@@ -54,7 +54,17 @@ if [[ ! -f $build/build.ninja ]]; then
         -DCMAKE_EXE_LINKER_FLAGS="-stdlib=libc++ -L$libcxx/lib -Wl,-rpath,$libcxx/lib" \
         -DPS5_HOST_APP_ROOT="$build/app" > "$build.configure.log" 2>&1 || { cat "$build.configure.log" >&2; exit 1; }
 fi
-"$ninja" -C "$build" ps5-samples-host | tail -1
+# Retain the full compiler output; the former tail -1 hid the actual error.
+build_log="$build/build.log"
+jobs="${PS5_HOST_JOBS:-2}"
+if [[ ! $jobs =~ ^[1-9][0-9]*$ ]]; then
+    echo "PS5_HOST_JOBS must be a positive integer" >&2
+    exit 2
+fi
+if ! "$ninja" -C "$build" -j "$jobs" ps5-samples-host 2>&1 | tee "$build_log"; then
+    echo "Host build failed; full compiler output: $build_log" >&2
+    exit 1
+fi
 mkdir -p "$build/app"
 ln -sfn "$asset_title/assets" "$build/app/assets"
 ln -sfn "$root/shaders" "$build/app/shaders"
@@ -74,7 +84,7 @@ printf 'frames %s\nscreenshot\nsamples %s\n' "${FRAMES:-300}" "${samples[*]}" > 
 out="$root/klog/host-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$out"
 status=0
-"$build/ps5-samples-host" 2>&1 | tee "$out/log.txt" | grep -E "\] (sample|samples|test run|ends)|Fatal|rror" || true
+"$build/ps5-samples-host" 2>&1 | tee "$out/log.txt" | grep -E "\] (sample|samples|test run|ends)|CINEMA_REFERENCE|Fatal|rror" || true
 grep -q "ends: status 0" "$out/log.txt" || status=1
 if [[ -n ${ENCORE_CINEMA_SHADER_DIR:-} ]]; then
     grep -q "CINEMA_REFERENCE PASS" "$out/log.txt" || status=1
