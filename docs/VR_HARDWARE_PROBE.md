@@ -233,3 +233,23 @@ seconds, squeeze L2, R2, then both, hold about a second each; note white
 target highlights and any one-time 100ms controller pulses. No firmware,
 credential, payload or live registered memory change. V8's VO_BUSY
 remains unresolved and must not be treated as successful retirement.
+
+## V9 hardware results and V10 private rhythm foundation (2026-11-20)
+V9 user confirmed white target feedback during final 60fps phase.
+2700/2700 submitted, zero queue-full/errors, four input states
+2535 neutral/19 left/79 right/67 both. Both controllers 2700 connected
+and tracked samples. 90/120/60 submissions 90.09/120.03/60.13fps.
+Pad sandbox load succeeded (handle 0x72); both named/NID lookups
+failed 0x80020003. Haptics remain unavailable; no unverified offsets.
+Unregister still VO_BUSY. Flip status is not a compositor release fence.
+V10 adds a host-testable 5-lane monotonic rhythm clock (±120ms inclusive,
+rising edges, missed beats), real Sense lane mapping (L2/square/triangle/
+cross/R2), world anchored target/note positions and controller markers,
+up to 12 per eye in private Vulkan images. Private marker readback is
+checked; no live registered memory writes, no audio, no real game
+chart, no visible moving notes yet. The diagnostic counters are NOT a
+score for the user because the notes are not visible. Existing visible
+V9 immutable targets remain unchanged. Do not request repeated
+hardware tests until a meaningful presentation milestone is ready.
+Host rhythm tests passed GCC and Clang; native integration still needs
+build and physical verification. No change to firmware or credentials.

@@ -17,6 +17,7 @@
 #include "../probe_vulkan.h"
 #include "../probe_timing.h"
 #include "../probe_world.h"
+#include "../probe_rhythm.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -2503,6 +2504,10 @@ int psvr2_selftest(const char *tag, int frames)
     unsigned old_variant=0;
     int phase=0,phase_done=0,phase_count=0,world_ready=0;
     float world_points[3][3]={{0}};
+    psvr2_pose rhythm_anchor={0};
+    encore_rhythm rhythm;encore_rhythm_init(&rhythm);
+    uint64_t rhythm_start=0,rhythm_frames=0;
+    unsigned rhythm_inputs=0;
     psvr2_vblank(&phase_vb,&phase_vt);
     XRLOG("VR_PROBE BATCH phase=0 90Hz; keep head still first 4s, then squeeze L2 and R2 separately and together");
     // Give the tracker up to 3 seconds to settle before beginning any frame.
@@ -2549,6 +2554,7 @@ int psvr2_selftest(const char *tag, int frames)
         const uint64_t elapsed=psvr2_now_us()-t0;
         if(encore_origin_sample(&gate,elapsed,dev.pos,dev.quat)) {
             encore_world_anchor(&dev,world_points);world_ready=1;
+            rhythm_anchor=dev;
             XRLOG("VR_PROBE origin candidate frame=%d elapsed_us=%lu pos=(%.4f %.4f %.4f) quat=(%.5f %.5f %.5f %.5f)",
                   i,(unsigned long)elapsed,(double)dev.pos[0],(double)dev.pos[1],(double)dev.pos[2],
                   (double)dev.quat[0],(double)dev.quat[1],(double)dev.quat[2],(double)dev.quat[3]);
@@ -2566,13 +2572,17 @@ int psvr2_selftest(const char *tag, int frames)
         }
         // Read real Sense input; send one short, low-intensity pulse per trigger.
         psvr2_poll();
-        unsigned variant=0;
+        unsigned variant=0,lanes=0;
+        psvr2_controller controllers[2]={{0}};
         for(int side=0;side<2;++side){
             psvr2_controller c;
             psvr2_get_controller(side,psvr2_now_us(),&c);
+            controllers[side]=c;
             if(c.source!=1 || !c.connected){armed[side]=0;continue;}
             ++connected[side];if(c.tracked)++located[side];
             buttons_seen[side]|=c.buttons;touches_seen[side]|=c.touches;
+            if(!side){if(c.trigger>.55f)lanes|=1u;if(c.buttons&PSVR2_BTN_X)lanes|=2u;if(c.buttons&PSVR2_BTN_Y)lanes|=4u;}
+            else{if(c.buttons&PSVR2_BTN_A)lanes|=8u;if(c.trigger>.55f)lanes|=16u;}
             if(c.trigger<.15f)armed[side]=1;
             if(c.trigger>.55f){
                 ++trigger_samples[side];variant|=1u<<side;
@@ -2593,7 +2603,34 @@ int psvr2_selftest(const char *tag, int frames)
                     visible[side][j]=encore_world_project(&optical[side],&eyes[side],world_points[j],uv[side][j]);
                     if(visible[side][j]<0)valid=0;
                 }
-                gpu_rc=valid?encore_probe_gpu_world(uv,visible):-1;
+                // Timed five-lane chart and tracked controller markers on private
+                // GPU images. Nothing here writes registered compositor buffers.
+                if(!rhythm_start)rhythm_start=elapsed;
+                encore_rhythm_tick(&rhythm,elapsed-rhythm_start,lanes);
+                rhythm_inputs|=lanes;
+                float points[12][3]={{0}};
+                int enabled[12]={0};
+                for(unsigned lane=0;lane<5;++lane){
+                    const float x=((float)lane-2.f)*.24f;
+                    float local[2][3]={{x,-.48f,-2.f},{x,-.48f+encore_rhythm_distance(&rhythm,lane),-2.f}};
+                    for(int kind=0;kind<2;++kind){
+                        unsigned j=lane+5u*(unsigned)kind;
+                        encore_rotate(rhythm_anchor.quat,local[kind],points[j]);
+                        for(int k=0;k<3;++k)points[j][k]+=rhythm_anchor.pos[k];
+                        enabled[j]=1;
+                    }
+                }
+                for(int hand=0;hand<2;++hand)
+                    if(controllers[hand].source==1&&controllers[hand].connected&&controllers[hand].tracked&&encore_pose_valid(&controllers[hand].pose)){
+                        memcpy(points[10+hand],controllers[hand].pose.pos,sizeof points[0]);enabled[10+hand]=1;
+                    }
+                float chart_uv[2][12][2]={{{0}}};int chart_visible[2][12]={{0}};
+                for(int side=0;side<2;++side)for(int j=0;j<12;++j)if(enabled[j]){
+                    chart_visible[side][j]=encore_world_project(&optical[side],&eyes[side],points[j],chart_uv[side][j]);
+                    if(chart_visible[side][j]<0)valid=0;
+                }
+                gpu_rc=valid?encore_probe_gpu_markers(chart_uv,chart_visible):-1;
+                if(!gpu_rc)++rhythm_frames;
                 if(!gpu_rc){
                     ++world_count;
                     if(i%300==0||i==frames)
@@ -2671,6 +2708,8 @@ int psvr2_selftest(const char *tag, int frames)
     }
     XRLOG("VR_PROBE BATCH highway displayed neutral=%lu left=%lu right=%lu both=%lu (successful submissions)",
           (unsigned long)display_counts[0],(unsigned long)display_counts[1],(unsigned long)display_counts[2],(unsigned long)display_counts[3]);
+    XRLOG("VR_PROBE V10 private rhythm frames=%lu lanes_seen=0x%x hits=%u misses=%u off_window=%u (invisible diagnostic; not a player score)",
+          (unsigned long)rhythm_frames,rhythm_inputs,rhythm.hits,rhythm.misses,rhythm.early);
     XRLOG("VR_PROBE BATCH summary phases_completed=%d/3 world_private_frames=%lu origin=%d",
           phase_done,(unsigned long)world_count,world_ready);
     const double secs = (double)(psvr2_now_us() - t0) / 1e6;
@@ -2678,7 +2717,7 @@ int psvr2_selftest(const char *tag, int frames)
           frames, secs, secs > 0 ? ok / secs : 0.0, (unsigned long)(H.stats.queue_full - qf0),
           (unsigned long)(H.stats.errors - err0), psvr2_worn());
     (void)fr0;
-    XRLOG("VR_PROBE V9 summary origin_candidate=%d replay_count=%lu replay_over_11ms=%lu flip_valid=%lu flip_invalid=%lu flip_regressed=%lu flip_max_lag=%lu",
+    XRLOG("VR_PROBE V10 summary origin_candidate=%d replay_count=%lu replay_over_11ms=%lu flip_valid=%lu flip_invalid=%lu flip_regressed=%lu flip_max_lag=%lu",
           gate.anchored,(unsigned long)gpu_count,(unsigned long)gpu_over,(unsigned long)flips.valid,
           (unsigned long)flips.invalid,(unsigned long)flips.regressed,(unsigned long)flips.max_lag);
     psvr2_output_stop();

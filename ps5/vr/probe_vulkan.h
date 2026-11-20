@@ -17,6 +17,8 @@ void encore_probe_gpu_stop(void);
 int encore_probe_gpu_replay(void);
 /* Render tracked world-space marker projections into private GPU memory. */
 int encore_probe_gpu_world(const float uv[2][3][2],const int visible[2][3]);
+/* Up to 12 world-space markers per eye, private GPU targets only. */
+int encore_probe_gpu_markers(const float uv[2][12][2],const int visible[2][12]);
 #ifdef __cplusplus
 }
 #endif

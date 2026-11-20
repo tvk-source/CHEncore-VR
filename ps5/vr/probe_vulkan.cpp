@@ -281,11 +281,11 @@ extern "C" int encore_probe_gpu_replay(void) {
     }
     return 0;
 }
-extern "C" int encore_probe_gpu_world(const float uv[2][3][2],const int visible[2][3]) {
+extern "C" int encore_probe_gpu_markers(const float uv[2][12][2],const int visible[2][12]) {
     if(!g.verified||g.pending||!uv||!visible)return -1;
     constexpr unsigned size=1024;
     struct Sample{size_t index;uint32_t pixel;};
-    Sample samples[8]{};
+    Sample samples[26]{};
     unsigned n=0;
     GPU_CHECK(vkResetCommandBuffer(g.worldCb,0));
     VkCommandBufferBeginInfo begin{};
@@ -310,7 +310,7 @@ extern "C" int encore_probe_gpu_world(const float uv[2][3][2],const int visible[
         a.clearValue.color.float32[0]=a.clearValue.color.float32[1]=a.clearValue.color.float32[2]=128.f/255.f;
         a.clearValue.color.float32[3]=1.f;
         // Fixed-size markers for the tracked world coordinates; private GPU target.
-        for(unsigned j=0;j<3;++j)if(visible[side][j]>0){
+        for(unsigned j=0;j<12;++j)if(visible[side][j]>0){
             float u=uv[side][j][0],v=uv[side][j][1];
             if(!(u>.02f&&u<.98f&&v>.02f&&v<.98f)){
                 vkCmdEndRenderPass(g.worldCb);return -1;
@@ -338,6 +338,14 @@ extern "C" int encore_probe_gpu_world(const float uv[2][3][2],const int visible[
         say("VR_PROBE world GPU readback mismatch sample=%u",i);return -1;
     }
     return 0;
+}
+extern "C" int encore_probe_gpu_world(const float uv[2][3][2],const int visible[2][3]) {
+    if(!uv||!visible)return -1;
+    float points[2][12][2]{};int show[2][12]{};
+    for(int eye=0;eye<2;++eye)for(int j=0;j<3;++j){
+        points[eye][j][0]=uv[eye][j][0];points[eye][j][1]=uv[eye][j][1];show[eye][j]=visible[eye][j];
+    }
+    return encore_probe_gpu_markers(points,show);
 }
 extern "C" void encore_probe_gpu_stop(void) {
     if(g.pending){say("VR_PROBE GPU fence not confirmed; retain resources until title closure");return;}
