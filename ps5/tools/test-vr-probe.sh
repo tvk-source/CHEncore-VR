@@ -23,3 +23,6 @@ python3 tests/encore_asset_build_dir_tests.py
 
 "${CC:-cc}" -std=c11 -Wall -Wextra -Werror -pedantic tests/encore_probe_world_tests.c -lm -o "$tmp/encore_probe_world_tests"
 "$tmp/encore_probe_world_tests"
+
+"${CC:-cc}" -std=c11 -Wall -Wextra -Werror -pedantic tests/encore_probe_highway_tests.c -lm -o "$tmp/encore_probe_highway_tests"
+"$tmp/encore_probe_highway_tests"

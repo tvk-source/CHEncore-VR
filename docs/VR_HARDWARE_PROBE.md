@@ -211,3 +211,25 @@ are not proof of haptics. Stop on discomfort or loss of tracking.
 No gaze, adaptive triggers, hand tracking, firmware or payload changes.
 Return combined log plus perceived gray/green/blue phase changes and
 whether each pulse was felt. Tests include world projection and phase boundaries.
+
+## V9 input-driven highway preview (2026-11-20)
+V8 passed all modes visually and via native calls, 900/1200/600 submissions
+at 90.09/120.03/60.13 FPS, 1800 dynamic private world renders, zero
+errors or budget overruns. At half rate the port vblank runs at 60Hz;
+this is not independent proof of 120 distinct display refreshes.
+Both Sense controllers connected and tracked 2700/2700 samples, trigger
+samples L185/R133; button masks 0xb3/0x8f. Vibration failed because the
+module lookup found no libScePad handle. V9 attempts the existing native
+sandbox module path and exact module basenames, tries names/NIDs only,
+and refuses unverified offsets in the native probe. Mode call failure
+prevents intensity call; logs API success separately from user perception.
+Four immutable 1024x1024-per-eye highway preview variants replace the
+visible reference pattern: neutral, left target white, right target white,
+both white. This is a CPU-generated mock-up with stationary notes, not
+CHEncore gameplay or GPU rendered live presentation. The GPU continues
+the private Vulkan tests from V8. Three refresh modes still run for
+~10s each, with logs rather than tint as phase markers. After four
+seconds, squeeze L2, R2, then both, hold about a second each; note white
+target highlights and any one-time 100ms controller pulses. No firmware,
+credential, payload or live registered memory change. V8's VO_BUSY
+remains unresolved and must not be treated as successful retirement.

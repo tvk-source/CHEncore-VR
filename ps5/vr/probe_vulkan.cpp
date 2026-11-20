@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "probe_vulkan.h"
 #include "probe_raster.hpp"
+#include "probe_highway.h"
 #include "vulkan_linear.hpp"
 #include "../src/platform.h"
 #include <volk.h>
@@ -133,7 +134,7 @@ extern "C" int encore_probe_gpu_init(void) {
     return 0;
 }
 extern "C" int encore_probe_gpu_render(const encore_probe_eye eyes[2],unsigned size,void *const *buffers,int count) {
-    if(!g.device||g.pass||!eyes||!buffers||size!=1024||count!=3)return -1;
+    if(!g.device||g.pass||!eyes||!buffers||size!=1024||count!=4)return -1;
     for(int i=0;i<count;++i)if(!buffers[i])return -1;
     const VkDeviceSize bytes=VkDeviceSize(size)*size*2*4;
     VkAttachmentDescription ad{};
@@ -251,14 +252,15 @@ extern "C" int encore_probe_gpu_render(const encore_probe_eye eyes[2],unsigned s
         if(!background)return -1;
     }
     g.verified=true;
+    // Keep the fully verified Vulkan reference in private memory for replay.
+    // Build four pre-registered stereo highway states (CPU raster, no live writes).
     for(int i=0;i<count;++i) {
-        std::memcpy(buffers[i],g.mapped,size_t(bytes));
-        // Distinct phase tint, applied only before registration. No live writes.
-        const uint32_t tint[]={UINT32_C(0xff808080),UINT32_C(0xff608060),UINT32_C(0xff806060)};
         auto* dest=static_cast<uint32_t*>(buffers[i]);
-        for(size_t k=0;k<size_t(bytes/4);++k)
-            if(dest[k]==UINT32_C(0xff808080))dest[k]=tint[i];
+        for(unsigned y=0;y<size;++y)for(unsigned x=0;x<2*size;++x)
+            dest[size_t(y)*2*size+x]=encore_highway_pixel(&eyes[x/size],
+               (float(x%size)+.5f)/float(size),(float(y)+.5f)/float(size),unsigned(i));
     }
+    say("VR_PROBE highway immutable variants ready: neutral, left, right, both");
     say("VR_PROBE GPU raster/copy/fence/readback PASS; immutable headset buffers ready");
     return 0;
 }

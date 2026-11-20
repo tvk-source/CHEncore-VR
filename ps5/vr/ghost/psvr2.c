@@ -1043,6 +1043,13 @@ static void *pad_vr_export(int h, const char *name, const char *nid, uint32_t of
     *dlsym_rc = sceKernelDlsym(h, name, &fn);
     if (*dlsym_rc == 0 && fn)
         return fn;
+#if defined(ENCORE_VR_PROBE)
+    (void)off1360;(void)base_out;
+    fn=NULL;
+    *dlsym_rc=sceKernelDlsym(h,nid,&fn);
+    if(*dlsym_rc==0&&fn)return fn;
+    return NULL;
+#else
     static const export_anchor_t anchor = {0x1f650, "scePadCtrlpSyncInit Error : cannot open [%08x]"};
     module_info_t mi;
     memset(&mi, 0, sizeof mi);
@@ -1060,6 +1067,7 @@ static void *pad_vr_export(int h, const char *name, const char *nid, uint32_t of
             off = 0;
     }
     return off ? (void *)(base + off) : NULL;
+#endif
 }
 
 static void bind_vr_vibration(void)
@@ -1072,18 +1080,38 @@ static void bind_vr_vibration(void)
     size_t n = 0;
     int rc_mode = -1, rc_vib = -1, found = 0;
     uintptr_t base = 0;
-    if (sceKernelGetModuleList(handles, 256, &n) != 0)
-        n = 0;
-    for (size_t i = 0; i < n && !found; i++) {
+    int list_rc=sceKernelGetModuleList(handles,256,&n);
+    if(list_rc!=0)n=0;
+    if(n>256)n=256;
+#if defined(ENCORE_VR_PROBE)
+    // Normal native title sandbox module path, as used for Hmd2/Tracker2.
+    // Loading an already-loaded library obtains its handle, not a firmware patch.
+    char path[128];
+    snprintf(path,sizeof path,"/%s/common/lib/libScePad.sprx",sceKernelGetFsSandboxRandomWord());
+    int load_result=0;
+    int h=sceKernelLoadStartModule(path,0,NULL,0,NULL,&load_result);
+    XRLOG("VR_PROBE Sense module list rc=0x%08x count=%lu sandbox load handle=0x%x result=0x%08x",
+          list_rc,(unsigned long)n,h,load_result);
+    if(h>=0){
+        found=1;
+        vr_vib_mode=pad_vr_export(h,"scePadVrControllerSetVibrationMode","Wf6-PNCyY20",0,&rc_mode,&base);
+        vr_vib=pad_vr_export(h,"scePadVrControllerSetVibration","DGCwN1Lmmys",0,&rc_vib,&base);
+    }
+#endif
+    for (size_t i = 0; i < n && (!vr_vib_mode || !vr_vib); i++) {
         module_info_t mi;
         memset(&mi, 0, sizeof mi);
         mi.size = sizeof mi;
-        if (sceKernelGetModuleInfo(handles[i], &mi) != 0 || strcmp(mi.name, "libScePad.sprx"))
-            continue;
-        found = 1;
-        vr_vib_mode = pad_vr_export(handles[i], "scePadVrControllerSetVibrationMode", "Wf6-PNCyY20", 0x100b0,
+        if(sceKernelGetModuleInfo(handles[i],&mi)!=0)continue;
+        mi.name[sizeof mi.name-1]=0;
+        const char *name=strrchr(mi.name,'/');
+        name=name?name+1:mi.name;
+        if(strcmp(name,"libScePad.sprx")&&strcmp(name,"libScePad"))continue;
+        found=1;
+        XRLOG("VR_PROBE Sense pad module match handle=0x%x name=%s",handles[i],name);
+        if(!vr_vib_mode)vr_vib_mode = pad_vr_export(handles[i], "scePadVrControllerSetVibrationMode", "Wf6-PNCyY20", 0x100b0,
                                     &rc_mode, &base);
-        vr_vib = pad_vr_export(handles[i], "scePadVrControllerSetVibration", "DGCwN1Lmmys", 0x5610, &rc_vib, &base);
+        if(!vr_vib)vr_vib = pad_vr_export(handles[i], "scePadVrControllerSetVibration", "DGCwN1Lmmys", 0x5610, &rc_vib, &base);
     }
     XRLOG("psvr2: Sense vibration setters: mode %s, intensity %s (libScePad %s, dlsym 0x%08x 0x%08x, base %p)",
           vr_vib_mode ? "found" : "not found", vr_vib ? "found" : "not found", found ? "loaded" : "missing",
@@ -1101,10 +1129,12 @@ static int pad_rumble(int h, int sense, uint8_t left, uint8_t right)
     return vr_vib ? vr_vib(h, left > right ? left : right) : -1;
 }
 
+static int haptic_result[2]={-1,-1};
 void psvr2_haptic(int side, float amplitude, float seconds)
 {
     if (side < 0 || side > 1)
         return;
+    haptic_result[side]=-1;
     pthread_mutex_lock(&pad_lock);
     int h = -1, slot = 2;
     if (P.sense[side] >= 0 && P.sense_connected[side]) {
@@ -1124,7 +1154,10 @@ void psvr2_haptic(int side, float amplitude, float seconds)
                 rc = scePadSetVibrationMode(h, 2);
             }
             XRLOG("psvr2: vibration mode (%s pad 0x%x) -> 0x%08x", sense ? "Sense" : "DualSense", h, rc);
-            P.vib_mode_set[slot] = 1;
+            P.vib_mode_set[slot] = rc == 0;
+#if defined(ENCORE_VR_PROBE)
+            if(rc!=0){ haptic_result[side]=rc;pthread_mutex_unlock(&pad_lock);return; }
+#endif
         }
         float a = amplitude < 0 ? 0 : amplitude > 1 ? 1 : amplitude;
         const uint8_t v = (uint8_t)(a * 255);
@@ -1133,6 +1166,7 @@ void psvr2_haptic(int side, float amplitude, float seconds)
             rc = pad_rumble(h, 0, side ? 0 : v, side ? v : 0);
         else
             rc = pad_rumble(h, sense, v, v);
+        haptic_result[side]=rc;
         static unsigned nfail, nok;
         if (rc != 0 && nfail < 4) {
             nfail++;
@@ -1144,7 +1178,7 @@ void psvr2_haptic(int side, float amplitude, float seconds)
         }
         if (seconds <= 0)
             seconds = 0.05f;
-        P.haptic_until[side] = a > 0 ? psvr2_now_us() + (uint64_t)(seconds * 1e6f) : 0;
+        P.haptic_until[side] = rc==0 && a > 0 ? psvr2_now_us() + (uint64_t)(seconds * 1e6f) : 0;
         P.haptic_amp[side] = a;
     }
     pthread_mutex_unlock(&pad_lock);
@@ -2420,7 +2454,7 @@ void psvr2_shutdown(void)
  * No game assets or changing credentials. Returns number of successful submissions. */
 int psvr2_selftest(const char *tag, int frames)
 {
-    enum { EYE = 1024, NBUF = 3 };
+    enum { EYE = 1024, NBUF = 4 };
     static void *buf[NBUF];
     if (frames < 1 || frames > ENCORE_PROBE_FRAMES) return -1;
     if (psvr2_init_output() != 0) {
@@ -2449,7 +2483,7 @@ int psvr2_selftest(const char *tag, int frames)
         XRLOG("VR_PROBE GPU validation failed; no headset output registered");
         return -1;
     }
-    XRLOG("VR_PROBE scene: square left 1m, cross/ring center 2m, diamond right 4m; head-relative");
+    XRLOG("VR_PROBE scene: five-lane highway preview; squeeze L2/R2 to light left/right targets and release to clear; head-relative immutable variants");
     const uint64_t qf0 = H.stats.queue_full, err0 = H.stats.errors, fr0 = H.stats.frames;
     if (psvr2_output_start(EYE, EYE, buf, NBUF, PSVR2_MODE_90) != 0) {
         XRLOG("selftest %s: output start failed", tag);
@@ -2464,11 +2498,13 @@ int psvr2_selftest(const char *tag, int frames)
     uint64_t gpu_total=0,gpu_max=0,gpu_count=0,gpu_over=0;
     uint64_t phase_start=t0,phase_vb=0,phase_vt=0,phase_gpu_total=0,phase_gpu_count=0,phase_gpu_max=0,phase_over=0;
     uint64_t world_count=0,connected[2]={0},located[2]={0},trigger_samples[2]={0};
-    unsigned buttons_seen[2]={0},haptic_sent[2]={0},armed[2]={0};
+    unsigned buttons_seen[2]={0},touches_seen[2]={0},haptic_sent[2]={0},haptic_ok[2]={0},armed[2]={0};
+    uint64_t display_counts[4]={0};
+    unsigned old_variant=0;
     int phase=0,phase_done=0,phase_count=0,world_ready=0;
     float world_points[3][3]={{0}};
     psvr2_vblank(&phase_vb,&phase_vt);
-    XRLOG("VR_PROBE BATCH phase=0 90Hz gray; keep head still first 4s, then move gently and press each Sense trigger once");
+    XRLOG("VR_PROBE BATCH phase=0 90Hz; keep head still first 4s, then squeeze L2 and R2 separately and together");
     // Give the tracker up to 3 seconds to settle before beginning any frame.
     psvr2_pose dev = {{0, 0, 0}, {0, 0, 0, 1}}, eyes[2];
     float lv[3], av[3];
@@ -2496,7 +2532,7 @@ int psvr2_selftest(const char *tag, int frames)
             phase_gpu_total=phase_gpu_count=phase_gpu_max=phase_over=0;
             phase_vb=phase_vt=0;psvr2_vblank(&phase_vb,&phase_vt);
             XRLOG("VR_PROBE BATCH phase=%d configured refresh=%.0f target_submit=%.0f tint=%s",
-                  phase,(double)psvr2_refresh_hz(),(double)psvr2_frame_hz(),phase==1?"green":"blue");
+                  phase,(double)psvr2_refresh_hz(),(double)psvr2_frame_hz(),"input-driven");
         }
         uint64_t disp = 0;
         if (psvr2_begin_frame((uint64_t)i, &disp) != 0) {
@@ -2530,18 +2566,20 @@ int psvr2_selftest(const char *tag, int frames)
         }
         // Read real Sense input; send one short, low-intensity pulse per trigger.
         psvr2_poll();
+        unsigned variant=0;
         for(int side=0;side<2;++side){
             psvr2_controller c;
             psvr2_get_controller(side,psvr2_now_us(),&c);
             if(c.source!=1 || !c.connected){armed[side]=0;continue;}
             ++connected[side];if(c.tracked)++located[side];
-            buttons_seen[side]|=c.buttons;
+            buttons_seen[side]|=c.buttons;touches_seen[side]|=c.touches;
             if(c.trigger<.15f)armed[side]=1;
             if(c.trigger>.55f){
-                ++trigger_samples[side];
+                ++trigger_samples[side];variant|=1u<<side;
                 if(armed[side]&&!haptic_sent[side]&&elapsed>=4000000u){
-                    psvr2_haptic(side,.15f,.08f);haptic_sent[side]=1;
-                    XRLOG("VR_PROBE BATCH Sense %d trigger detected; 80ms pulse requested",side);
+                    psvr2_haptic(side,.25f,.10f);haptic_sent[side]=1;
+                    haptic_ok[side]=haptic_result[side]==0;
+                    XRLOG("VR_PROBE BATCH Sense %d trigger detected; 100ms pulse rc=0x%08x",side,haptic_result[side]);
                 }
             }
         }
@@ -2584,7 +2622,11 @@ int psvr2_selftest(const char *tag, int frames)
             psvr2_repeat_frame((uint64_t)i);
             break;
         }
-        if (psvr2_submit(phase, (uint64_t)i, disp, &dev, tl, tr) != 0) {
+        if(variant!=old_variant){
+            XRLOG("VR_PROBE BATCH highway input variant=%u phase=%d",variant,phase);
+            old_variant=variant;
+        }
+        if (psvr2_submit((int)variant, (uint64_t)i, disp, &dev, tl, tr) != 0) {
             XRLOG("selftest %s: submission failed at %d", tag, i);
             break;
         }
@@ -2609,7 +2651,7 @@ int psvr2_selftest(const char *tag, int frames)
                   i,(double)dev.pos[0],(double)dev.pos[1],(double)dev.pos[2],(double)dev.quat[0],
                   (double)dev.quat[1],(double)dev.quat[2],(double)dev.quat[3]);
         }
-        ok++;++phase_count;
+        ok++;++phase_count;++display_counts[variant];
         if(i==encore_batch_end(phase)){
             uint64_t end_vb=0,end_vt=0;
             int vrc=psvr2_vblank(&end_vb,&end_vt);
@@ -2624,9 +2666,11 @@ int psvr2_selftest(const char *tag, int frames)
     }
     for(int side=0;side<2;++side){
         if(haptic_sent[side])psvr2_haptic(side,0.f,0.f);
-        XRLOG("VR_PROBE BATCH Sense %d connected=%lu tracked=%lu trigger_samples=%lu buttons_seen=0x%x haptic_requested=%u",
-              side,(unsigned long)connected[side],(unsigned long)located[side],(unsigned long)trigger_samples[side],buttons_seen[side],haptic_sent[side]);
+        XRLOG("VR_PROBE BATCH Sense %d connected=%lu tracked=%lu trigger_samples=%lu buttons_seen=0x%x touches_seen=0x%x haptic_requested=%u haptic_api_ok=%u",
+              side,(unsigned long)connected[side],(unsigned long)located[side],(unsigned long)trigger_samples[side],buttons_seen[side],touches_seen[side],haptic_sent[side],haptic_ok[side]);
     }
+    XRLOG("VR_PROBE BATCH highway displayed neutral=%lu left=%lu right=%lu both=%lu (successful submissions)",
+          (unsigned long)display_counts[0],(unsigned long)display_counts[1],(unsigned long)display_counts[2],(unsigned long)display_counts[3]);
     XRLOG("VR_PROBE BATCH summary phases_completed=%d/3 world_private_frames=%lu origin=%d",
           phase_done,(unsigned long)world_count,world_ready);
     const double secs = (double)(psvr2_now_us() - t0) / 1e6;
@@ -2634,7 +2678,7 @@ int psvr2_selftest(const char *tag, int frames)
           frames, secs, secs > 0 ? ok / secs : 0.0, (unsigned long)(H.stats.queue_full - qf0),
           (unsigned long)(H.stats.errors - err0), psvr2_worn());
     (void)fr0;
-    XRLOG("VR_PROBE V8 summary origin_candidate=%d replay_count=%lu replay_over_11ms=%lu flip_valid=%lu flip_invalid=%lu flip_regressed=%lu flip_max_lag=%lu",
+    XRLOG("VR_PROBE V9 summary origin_candidate=%d replay_count=%lu replay_over_11ms=%lu flip_valid=%lu flip_invalid=%lu flip_regressed=%lu flip_max_lag=%lu",
           gate.anchored,(unsigned long)gpu_count,(unsigned long)gpu_over,(unsigned long)flips.valid,
           (unsigned long)flips.invalid,(unsigned long)flips.regressed,(unsigned long)flips.max_lag);
     psvr2_output_stop();
