@@ -403,7 +403,11 @@ int main(int argc,char** argv)
 #if defined(ENCORE_VR_PROBE)
     // Bypass the game's updater, imported assets, pad polling and Vulkan.
     platform_init(PS5_TITLE_NAME);
-    return encore_vr_native_probe();
+    const int probeStatus = encore_vr_native_probe();
+    // Avoid returning into the CRT's LoadExec("exit") hook as well.
+    // No more VR frames; close this title through the standard PS menu.
+    say("VR_PROBE idle: code=%d; close CH: Encore VR Probe using PS menu", probeStatus);
+    for (;;) platform_sleep_us(100000);
 #endif
 #if !defined(PS5_HOST_REFERENCE)
 	if(encore_update_process_arguments(argc,argv))return 0;

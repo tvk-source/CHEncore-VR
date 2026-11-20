@@ -27,7 +27,7 @@ its samples.txt and optional ui.txt). No normal game build is needed first.
 The packaging step retains upstream open assets and licence notices; no
 user-imported resources are needed to run this probe. The probe metadata uses
 Ghost VR's VR app/VR-only bits, without the hand tracking flag; this metadata
-combination is **not verified on 7.61**. The same title ID as the development
+combination supported native output initialization on 7.61; visual output remains unconfirmed. The same title ID as the development
 game is intentional, so do not mount both builds simultaneously. The standard
 build (ENCORE_VR_PROBE=0, default) uses `build/ps5` and `dist/PPSA98743`.
 
@@ -40,15 +40,16 @@ launcher from a separate staging folder. Do not overwrite GhostVR or upstream
 Encore. Sit down, put the headset on before opening the probe, and launch.
 TV mirroring is intentionally disabled for this initial test.
 
-Expected: a steady small grey cross in both eyes, on dark grey, for at most
-180 submitted frames at nominal 90 Hz. Tracking gets up to three seconds to
-settle; the loop stops at eight seconds or first failure, wear removal or
-tracking loss. SDK calls and display initialization may take additional time;
+Expected: an enlarged steady grey cross and ring in both eyes, on dark grey,
+for at most 540 submitted frames at nominal 90 Hz (about six seconds).
+Tracking gets up to three seconds to settle; the loop stops at twelve seconds
+or first failure, wear removal or tracking loss. SDK calls and display initialization may take additional time;
 the loop bound is not a watchdog against a blocked firmware call. Close the
 title if uncomfortable or stuck. Do not retry automatically. The headset
-backend attempts teardown and asks the shell to exit, without falling through
-to the game. If the shell fails to recover, stop testing and use the usual
-console recovery procedure.
+backend attempts teardown, reports the result and then idles without submitting
+frames or falling through to gameplay. Close it explicitly via the PS menu.
+Do not launch another VR application until this title has been closed. If the
+shell fails to recover, stop testing and use the usual console recovery procedure.
 
 Collect klog from launch to exit, including `VR_PROBE` and `[ps5xr]` lines.
 A SUBMISSIONS_PASS only means all required frame submissions succeeded; both
@@ -78,3 +79,19 @@ The compatibility value is diagnostic only and cannot authorize headset access.
 The mock test reproduces the 0x1079 compatibility result and checks that 7.60
 and 13.60 PS5 versions remain rejected. The corrected native build and headset
 initialization still need console verification.
+
+## Second hardware launch, 2026-11-20
+Two runs of e87f3f5 detected native 7.61, matched the Hmd2 and VrTracker2 7.61
+anchors, initialized both Sense handles and native reprojection, registered
+three 2048x1024 buffers, and submitted 180/180 frames in 1.98 seconds (91.0 and
+91.1 submissions/s, zero queue-full waits or submission errors). Both runs
+returned SUBMISSIONS_PASS. Display output was configured at 89.91 Hz. Visual
+confirmation has not been provided. The unregister call returned VO_BUSY
+(0x80290009), but close, disable, tracker finalize, reprojection terminate and
+Hmd2 close/terminate returned zero. Do not infer that buffer ownership is
+fully verified; keep the immutable probe allocations alive until closure.
+After completion LoadExec("exit") caused an attempted invalid ELF spawn
+(0x80aa001a). The new diagnostic uses manual PS-menu closure instead, and
+provides a larger static test pattern with a longer bounded submission period.
+No GhostVR-specific payload dependency has been established or ruled out by
+this run; the exact set of active background payloads was not identified.

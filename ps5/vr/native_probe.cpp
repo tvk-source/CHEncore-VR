@@ -13,15 +13,13 @@ struct ProbeSoftwareVersion { uint64_t size; char text[0x1c]; uint32_t version; 
 static_assert(offsetof(ProbeSoftwareVersion, version) == 0x24);
 extern "C" int sceKernelGetProsperoSystemSwVersion(ProbeSoftwareVersion*);
 extern "C" int sceKernelGetSystemSwVersion(ProbeSoftwareVersion*);
-extern "C" int sceSystemServiceLoadExec(const char*, const char* const*);
 namespace {
-constexpr int Frames = 180;
+constexpr int Frames = 540;
 int finish(int status) {
     say("VR_PROBE result=%s code=%d", status == 0 ? "SUBMISSIONS_PASS" : "FAIL_OR_INCOMPLETE", status);
     std::fflush(stderr);
-    const int rc = sceSystemServiceLoadExec("exit", nullptr);
-    say("VR_PROBE shell exit returned 0x%08x", unsigned(rc));
-    return status ? status : 1;
+    // Native main owns process lifetime; LoadExec("exit") attempted an invalid spawn on 7.61.
+    return status;
 }
 }
 int encore_vr_native_probe() {

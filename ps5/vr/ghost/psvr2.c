@@ -2083,6 +2083,8 @@ void psvr2_output_stop(void)
             break;
         sceKernelUsleep(10000);
     }
+    if (rc != 0)
+        XRLOG("psvr2: warning: unregister not confirmed (0x%08x); no buffer reuse before process closure", rc);
     int rc2 = sceVideoOutClose(H.vh);
     H.vh = -1;
     XRLOG("psvr2: output stopped after %lu frames (unregister 0x%08x close 0x%08x disable 0x%08x)",
@@ -2415,7 +2417,7 @@ int psvr2_selftest(const char *tag, int frames)
 {
     enum { EYE = 1024, NBUF = 3 };
     static void *buf[NBUF];
-    if (frames < 1 || frames > 180) return -1;
+    if (frames < 1 || frames > 540) return -1;
     if (psvr2_init_output() != 0) {
         XRLOG("selftest %s: init failed", tag);
         return -1;
@@ -2431,9 +2433,11 @@ int psvr2_selftest(const char *tag, int frames)
             for (unsigned x = 0; x < 2 * EYE; ++x) {
                 const unsigned ex = x % EYE;
                 const int dx = (int)ex - EYE/2, dy = (int)y - EYE/2;
-                const int cross = (abs(dx) <= 3 && abs(dy) <= 24) ||
-                                  (abs(dy) <= 3 && abs(dx) <= 24);
-                p[(size_t)y * 2 * EYE + x] = cross ? 0xff707070u : 0xff202020u;
+                const int cross = (abs(dx) <= 8 && abs(dy) <= 96) ||
+                                  (abs(dy) <= 8 && abs(dx) <= 96);
+                const int ring = dx*dx + dy*dy >= 152*152 &&
+                                 dx*dx + dy*dy <= 160*160;
+                p[(size_t)y * 2 * EYE + x] = cross || ring ? 0xff808080u : 0xff202020u;
             }
     }
     const uint64_t qf0 = H.stats.queue_full, err0 = H.stats.errors, fr0 = H.stats.frames;
@@ -2455,7 +2459,7 @@ int psvr2_selftest(const char *tag, int frames)
     }
     if (!tracked) XRLOG("selftest %s: tracking not ready", tag);
     for (int i = 1; tracked && i <= frames; i++) {
-        if (!psvr2_worn() || psvr2_exit_requested() || psvr2_now_us() - t0 >= 8000000u) {
+        if (!psvr2_worn() || psvr2_exit_requested() || psvr2_now_us() - t0 >= 12000000u) {
             XRLOG("selftest %s: stopped (wear/exit/deadline)", tag);
             break;
         }
