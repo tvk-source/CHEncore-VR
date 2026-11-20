@@ -194,6 +194,7 @@ else()
 endif()
 
 if(PS5_HOST_REFERENCE)
+    target_sources(samples PRIVATE vr/cinema_reference.cpp)
 	add_executable(ps5-samples-host $<TARGET_OBJECTS:samples>)
 	target_link_libraries(ps5-samples-host PRIVATE dl pthread)
 	return()

@@ -75,7 +75,7 @@ VkResult VulkanExampleBase::createInstance()
 	auto supported = [&](const char* name) {
 		return std::find(supportedInstanceExtensions.begin(), supportedInstanceExtensions.end(), name) != supportedInstanceExtensions.end();
 	};
-	if (!supported(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME)) {
+	if (getenv("ENCORE_CINEMA_SHADER_DIR") || !supported(VK_EXT_HEADLESS_SURFACE_EXTENSION_NAME)) {
 		swapChain.offscreen = true;
 		instanceExtensions.erase(std::remove_if(instanceExtensions.begin(), instanceExtensions.end(), [&](const char* name) {
 			return !supported(name);

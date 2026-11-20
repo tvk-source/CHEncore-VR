@@ -11,6 +11,9 @@
 
 #include "vulkanexamplebase.h"
 #include "ps5_samples.h"
+#if defined(PS5_HOST_REFERENCE)
+#include "../vr/cinema_reference.hpp"
+#endif
 
 #include <sys/stat.h>
 
@@ -202,6 +205,18 @@ VkSemaphore VulkanExampleBase::ps5CaptureSwapchainImage(VkSemaphore renderComple
 	VK_CHECK_RESULT(vkQueueSubmit(queue, 1, &submitInfo, VK_NULL_HANDLE));
 	VK_CHECK_RESULT(vkQueueWaitIdle(queue));
 	vkFreeCommandBuffers(device, vulkanDevice->commandPool, 1, &cmd);
+#if defined(PS5_HOST_REFERENCE)
+    // Once on the requested screenshot frame, after the original renderer
+    // completed and before the acquired image is presented. Host only.
+    if(const char* shaders=getenv("ENCORE_CINEMA_SHADER_DIR");
+       shaders && !ps5.screenshotPath.empty() && ps5.framesDrawn+1==ps5.frameBudget) {
+        if(!swapChain.offscreen || !encoreCinemaReference(physicalDevice,device,queue,
+            vulkanDevice->queueFamilyIndices.graphics,image,swapChain.colorFormat,{width,height},
+            shaders,ps5.screenshotPath+".cinema.ppm")){
+            say("CINEMA_REFERENCE FAIL source capture");
+        }
+    }
+#endif
 
 	// Half the display's size, each pixel the mean of four: a 1920x1080 picture
 	// is enough to judge a frame and fetches four times faster than the full one

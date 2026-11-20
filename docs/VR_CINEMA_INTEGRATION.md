@@ -70,3 +70,23 @@ lifetime, and explicit image usage validation before calling the helper.
 A headless game render target is still preferable for the production VR
 path; a capture hook on the existing renderer is useful for host proof.
 Keep normal TV presentation unchanged. No hardware build requested yet.
+
+## Integrated host cinema reference
+
+The new host-only `cinema_reference.cpp` is called from the original
+renderer screenshot hook in `ps5/src/example_ps5.cpp`. In reference mode
+only, force existing host offscreen swapchain (TRANSFER_SRC usage).
+After the game frame has finished, allocate a sampled copy of the actual
+color image, a private RGBA8 stereo target, upload per-eye screen vertices,
+create the shader pipeline and descriptors, draw one textured quad for each
+eye, wait on a fence and export 2048x1024 side-by-side PPM/PNG. The same
+source frame is used for both eyes. This is intentionally a once-per-run
+reference, not a per-frame production design. No Hmd2, live VR buffer,
+or native build behavior changes. The source is restored before presentation.
+The output raster non-background check is a smoke test, not a proof of exact
+projection or pixel-perfect sampling. Inspect stereo output against the
+ordinary screenshot. `bash ps5/tools/cinema-reference.sh` compiles the new
+shaders and drives the existing host reference build; reuses assets from
+normal dist or dist-vr-probe. The script reports failure if no cinema PASS
+or any cinema FAIL is logged. Build and GPU run remain unverified until
+executed on a machine with repo dependencies. No console test requested.

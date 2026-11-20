@@ -21,7 +21,8 @@ root=$(dirname "$ps5")
 build="$root/build/ps5-host"
 ninja=$(command -v ninja || echo "$HOME/.local/bin/ninja")
 title_id=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["titleId"])' "$ps5/sce_sys/param.json")
-[[ -d $root/dist/$title_id/assets ]] || { echo "no dist/$title_id/assets: run ps5/tools/build.sh first" >&2; exit 2; }
+asset_title="${PS5_HOST_ASSET_TITLE:-$root/dist/$title_id}"
+[[ -d $asset_title/assets ]] || { echo "no $asset_title/assets: run ps5/tools/build.sh first" >&2; exit 2; }
 
 # libc++ 18.1.8, as on the console (the payload SDK's is 18.1): the samples'
 # random scenes come from std:: distributions, which libstdc++ computes otherwise.
@@ -55,7 +56,7 @@ if [[ ! -f $build/build.ninja ]]; then
 fi
 "$ninja" -C "$build" ps5-samples-host | tail -1
 mkdir -p "$build/app"
-ln -sfn "$root/dist/$title_id/assets" "$build/app/assets"
+ln -sfn "$asset_title/assets" "$build/app/assets"
 ln -sfn "$root/shaders" "$build/app/shaders"
 
 save=false
@@ -66,15 +67,25 @@ if [[ ${1:-} == --save ]]; then
 fi
 (( $# )) || set -- all
 mapfile -t samples < <(python3 "$ps5/tools/check-run.py" --resolve "$@")
+if [[ -n ${ENCORE_CINEMA_SHADER_DIR:-} ]]; then
+    for sample in "${samples[@]}"; do rm -f "$build/app/screenshots/$sample.ppm.cinema.ppm"; done
+fi
 printf 'frames %s\nscreenshot\nsamples %s\n' "${FRAMES:-300}" "${samples[*]}" > "$build/app/test-run.txt"
 out="$root/klog/host-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$out"
 status=0
 "$build/ps5-samples-host" 2>&1 | tee "$out/log.txt" | grep -E "\] (sample|samples|test run|ends)|Fatal|rror" || true
 grep -q "ends: status 0" "$out/log.txt" || status=1
+if [[ -n ${ENCORE_CINEMA_SHADER_DIR:-} ]]; then
+    grep -q "CINEMA_REFERENCE PASS" "$out/log.txt" || status=1
+    if grep -q "CINEMA_REFERENCE FAIL" "$out/log.txt"; then status=1; fi
+fi
 for sample in "${samples[@]}"; do
     ppm="$build/app/screenshots/$sample.ppm"
     [[ -f $ppm ]] || continue
+    if [[ -f $ppm.cinema.ppm ]]; then
+        python3 -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' "$ppm.cinema.ppm" "$out/$sample.cinema.png"
+    fi
     python3 -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).save(sys.argv[2])' "$ppm" "$out/$sample.png"
     if $save; then
         mkdir -p "$ps5/reference"
