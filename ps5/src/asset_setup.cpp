@@ -150,6 +150,13 @@ bool ps5_prepare_pc_assets(uint32_t frameBudget,const std::string& screenshot) {
   return true;
  }
 #endif
+#if defined(ENCORE_VR_CINEMA)
+ // Bounded, noninteractive first-run import before opening any VR output.
+ const std::string local=PS5_APP_ROOT "/assets/EncoreAssets-v1.encore-assets";
+ say("VR_CINEMA importing local personal asset pack");
+ if(!rhythm::assets::install(local,work,root,error)){say("VR_CINEMA asset import failed: %s",error.c_str());return false;}
+ rhythm::assets::setCurrentRoot(root);say("VR_CINEMA assets ready");return true;
+#endif
  AssetSetup setup(work);setup.message=error;setup.ps5.frameBudget=frameBudget;setup.ps5.screenshotPath=screenshot;
  if(!setup.initVulkan())return false;setup.prepare();setup.renderLoop();
  if(setup.vulkanDevice)vkDeviceWaitIdle(setup.vulkanDevice->logicalDevice);

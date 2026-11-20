@@ -433,7 +433,9 @@ public:
     int appliedFlipRate{-1},appliedFrameRatePreference{-1};
     bool displayPacingApplied{};
     void inspectOutputResolution() {
-#if !defined(PS5_HOST_REFERENCE)
+#if defined(ENCORE_VR_CINEMA)
+        width=1920;height=1080;return;
+#elif !defined(PS5_HOST_REFERENCE)
         // One-launch diagnostic, gated by the bounded console test runner.
         if(ps5.frameBudget)if(FILE* flag=std::fopen("/app0/ime-1080-test.txt","r")) {
             std::fclose(flag);std::remove("/app0/ime-1080-test.txt");
@@ -473,7 +475,9 @@ public:
 #endif
     }
     void inspectDisplayTiming() {
-#if !defined(PS5_HOST_REFERENCE)
+#if defined(ENCORE_VR_CINEMA)
+        displayTiming.refreshMilliHz=60000;return;
+#elif !defined(PS5_HOST_REFERENCE)
         uint32_t count=0;
         if(vkGetPhysicalDeviceDisplayPropertiesKHR(physicalDevice,&count,nullptr)!=VK_SUCCESS)return;
         std::vector<VkDisplayPropertiesKHR> displays(count);
@@ -491,6 +495,9 @@ public:
 #endif
     }
     void applyDisplayPacing() {
+#if defined(ENCORE_VR_CINEMA)
+        displayPacingApplied=true;return;
+#endif
         const int rate=displayTiming.flipRate(frameRateLimit);
         if(rate==appliedFlipRate && frameRateLimit==appliedFrameRatePreference)return;
         appliedFlipRate=rate;appliedFrameRatePreference=frameRateLimit;
@@ -8212,6 +8219,9 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
 #endif
         removedBundledSongs=rhythm::storage::removedBundles(CH_USERDATA "/removed-bundled-songs.cfg");
         if(FILE* preference=std::fopen(CH_USERDATA "/update-checks.cfg","rb")){int enabled=1;unsigned version=0;char magic[32]{};if(std::fscanf(preference,"%31s %u %d",magic,&version,&enabled)==3 && std::strcmp(magic,"ENCORE_UPDATES")==0 && version==1)autoUpdateChecks=enabled!=0;std::fclose(preference);}
+        #if defined(ENCORE_VR_CINEMA)
+        autoUpdateChecks=false;updateCheckStarted=true;
+        #endif
         updateLiveQa=ps5.frameBudget && std::any_of(ps5Presses.begin(),ps5Presses.end(),[](const auto& p){return p.action=="update-check-live";});
         rhythm::startDiagnostics(CH_USERDATA "/logs",buildVersion);
         if(ps5.frameBudget && std::any_of(ps5Presses.begin(),ps5Presses.end(),[](const auto& p){return p.action=="update-selftest";})){updateCheckStarted=true;updateLiveQa=true;(void)applicationUpdater.selfTest();}

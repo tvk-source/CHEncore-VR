@@ -139,3 +139,19 @@ not committed or redistributed. To run with an authorized pack:
 
 The host reference fix is untested. Native cinema compositor integration,
 real menu input, and full song play remain outstanding.
+
+## Native cinema alpha
+Host actual game menu verified: 193 assets imported, 120 game frames, GPU SBS
+2048x1024, sample status 0. This commit introduces persistent compositor
+resources, actual tracked poses, a 3.6 m world-anchored screen at 2 m,
+1920x1080 offscreen game render, 60 FPS/120 Hz output, four direct buffers
+with V12's experimental flip/age checks, and a five-minute bound. This is
+not a compositor release guarantee. Any gate, wear, tracking or queue error
+stops presentation and retains direct buffers until the title closes.
+Native DualSense and instrument input and audio remain the original game
+paths; Sense is used for recenter only. No native hardware test or native
+build has yet been run on this alpha.
+
+Build separately using ENCORE_VR_CINEMA=1. The existing V12 probe build,
+native firmware and system remain unchanged. Private pack files are ignored
+and staged only locally. Never publish the staged personal build.

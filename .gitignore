@@ -33,3 +33,7 @@ ps5/sce_sys/pic1.dds
 
 # Earlier gallery captures are not part of the asset-free source release.
 docs/images/
+
+/local-assets/
+/dist-vr-probe/
+/dist-vr-cinema/

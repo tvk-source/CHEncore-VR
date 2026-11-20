@@ -42,7 +42,7 @@ public:
 	std::vector<VkImageView> imageViews{};
 	uint32_t queueNodeIndex{ UINT32_MAX };
 	uint32_t imageCount{ 0 };
-#if defined(PS5_HOST_REFERENCE)
+#if defined(PS5_HOST_REFERENCE) || defined(ENCORE_VR_CINEMA)
 	// PS5: the host reference build on a driver without headless surfaces (NVIDIA's)
 	// renders into a ring of offscreen images instead. Acquiring an image takes the
 	// next one, and presenting only waits for the frame; both stand in for the WSI

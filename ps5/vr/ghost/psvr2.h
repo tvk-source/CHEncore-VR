@@ -110,6 +110,10 @@ int psvr2_set_warp(const warp_axis warp[2][2], uint32_t eye_w, uint32_t eye_h);
 /* The process's direct memory: size, allocated, largest free block (bytes). */
 void psvr2_direct_memory(uint64_t *pool, uint64_t *allocated, uint64_t *largest_free);
 void psvr2_output_stop(void);
+#if defined(ENCORE_VR_CINEMA)
+void *psvr2_cinema_alloc(size_t bytes);
+int psvr2_cinema_flip(uint64_t *shown);
+#endif
 int psvr2_output_mode(void);
 int psvr2_output_set_mode(int mode);
 float psvr2_refresh_hz(void);

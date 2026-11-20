@@ -172,7 +172,9 @@ Result runSample(const Ps5Sample &sample, uint32_t frameBudget, const std::strin
 	try {
 		encore_startup::checkpoint("before game object construction");
 		if(strcmp(sample.id,"cloneheronative")==0 && !ps5_prepare_pc_assets(frameBudget,screenshotPath)){
-#if defined(PS5_HOST_REFERENCE)
+#if defined(ENCORE_VR_CINEMA)
+            throw std::runtime_error("Cinema requires installed PC assets");
+#elif defined(PS5_HOST_REFERENCE)
             if(std::getenv("ENCORE_CINEMA_SHADER_DIR"))throw std::runtime_error("Cinema reference requires installed PC assets");
 #endif
             result.ok=true;return result;
@@ -400,13 +402,18 @@ void runMenu()
 
 } // namespace
 
-#if defined(ENCORE_VR_PROBE)
+#if defined(ENCORE_VR_PROBE) && !defined(ENCORE_VR_CINEMA)
 #include "../vr/native_probe.hpp"
 #endif
 
+#if defined(ENCORE_VR_CINEMA)
+struct CinemaSoftwareVersion {uint64_t size;char text[0x1c];uint32_t version;uint64_t reserved;};
+static_assert(offsetof(CinemaSoftwareVersion,version)==0x24);
+extern "C" int sceKernelGetProsperoSystemSwVersion(CinemaSoftwareVersion*);
+#endif
 int main(int argc,char** argv)
 {
-#if defined(ENCORE_VR_PROBE)
+#if defined(ENCORE_VR_PROBE) && !defined(ENCORE_VR_CINEMA)
     // Bypass the game's updater, imported assets, pad polling and Vulkan.
     platform_init(PS5_TITLE_NAME);
     const int probeStatus = encore_vr_native_probe();
@@ -415,13 +422,17 @@ int main(int argc,char** argv)
     say("VR_PROBE idle: code=%d; close CH: Encore VR Probe using PS menu", probeStatus);
     for (;;) platform_sleep_us(100000);
 #endif
-#if !defined(PS5_HOST_REFERENCE)
+#if defined(ENCORE_VR_CINEMA)
+    CinemaSoftwareVersion fw{};fw.size=sizeof(fw);
+    if(sceKernelGetProsperoSystemSwVersion(&fw)!=0||(fw.version>>16)!=0x0761u){platform_init(PS5_TITLE_NAME);say("VR_CINEMA refused: only firmware 7.61 enabled");for(;;)platform_sleep_us(100000);}
+#endif
+#if !defined(PS5_HOST_REFERENCE) && !defined(ENCORE_VR_CINEMA)
 	if(encore_update_process_arguments(argc,argv))return 0;
 	if(encore_recover_application_update())return 0;
 	const bool startupLog=encore_startup::begin(PS5_TITLE_NAME);
 #endif
 	platform_init(PS5_TITLE_NAME);
-#if !defined(PS5_HOST_REFERENCE)
+#if !defined(PS5_HOST_REFERENCE) && !defined(ENCORE_VR_CINEMA)
 	encore_boot_application_runtime();
 	if(const char* root=encore_application_resource_root();root && *root)vks::tools::resourcePath=root;
 	if(!startupLog)say("startup checkpoint log unavailable (writable storage not accessible)");
@@ -459,5 +470,10 @@ int main(int argc,char** argv)
 	} else {
 		say("ends: status %d", status);
 	}
+
+#if defined(ENCORE_VR_CINEMA)
+    say("VR_CINEMA idle status=%d; close title using PS menu",status);
+    for(;;)platform_sleep_us(100000);
+#endif
 	return status;
 }

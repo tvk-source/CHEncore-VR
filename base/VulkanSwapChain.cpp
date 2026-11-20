@@ -33,7 +33,7 @@ void VulkanSwapChain::initSurface(uint32_t width, uint32_t height)
 void VulkanSwapChain::initSurface(screen_context_t screen_context, screen_window_t screen_window)
 #endif
 {
-#if defined(PS5_HOST_REFERENCE)
+#if defined(PS5_HOST_REFERENCE) || defined(ENCORE_VR_CINEMA)
 	// PS5: the instance found no headless surface on this driver (createInstance)
 	if (offscreen) {
 		initOffscreen();
@@ -168,7 +168,7 @@ void VulkanSwapChain::initSurface(screen_context_t screen_context, screen_window
 		}
 	}
 
-#if defined(PS5_HOST_REFERENCE)
+#if defined(PS5_HOST_REFERENCE) || defined(ENCORE_VR_CINEMA)
 	// PS5: a headless surface this device cannot present to (another driver in the
 	// instance offers headless surfaces, this one does not): offscreen images
 	if (presentQueueNodeIndex == UINT32_MAX) {
@@ -227,7 +227,7 @@ void VulkanSwapChain::create(uint32_t& width, uint32_t& height, bool vsync, bool
 	assert(device);
 	assert(instance);
 
-#if defined(PS5_HOST_REFERENCE)
+#if defined(PS5_HOST_REFERENCE) || defined(ENCORE_VR_CINEMA)
 	if (offscreen) {
 		createOffscreen(width, height);
 		return;
@@ -386,7 +386,7 @@ VkResult VulkanSwapChain::acquireNextImage(VkSemaphore presentCompleteSemaphore,
 }
 void VulkanSwapChain::cleanup()
 {
-#if defined(PS5_HOST_REFERENCE)
+#if defined(PS5_HOST_REFERENCE) || defined(ENCORE_VR_CINEMA)
 	if (offscreen) {
 		destroyOffscreenImages();
 		return;
@@ -405,7 +405,7 @@ void VulkanSwapChain::cleanup()
 	swapChain = VK_NULL_HANDLE;
 }
 
-#if defined(PS5_HOST_REFERENCE)
+#if defined(PS5_HOST_REFERENCE) || defined(ENCORE_VR_CINEMA)
 // PS5: offscreen images for the host reference build on a driver without headless
 // surfaces. The images are what a swapchain's would be (the preferred format, colour
 // attachment and transfer source and destination), so screenshots and the samples'

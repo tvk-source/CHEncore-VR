@@ -9,6 +9,14 @@
 #include <fstream>
 #include <stdexcept>
 #include <vector>
+#include <cstdlib>
+#include <memory>
+#if defined(ENCORE_VR_CINEMA)
+#include "ghost/psvr2.h"
+#include "probe_retirement.h"
+#include "probe_timing.h"
+#include "../src/platform.h"
+#endif
 
 namespace {
 constexpr uint32_t eyeSize=1024;
@@ -98,13 +106,17 @@ struct Resources {
     }
 };
 }
-bool encoreCinemaReference(VkPhysicalDevice physical,VkDevice device,VkQueue queue,
-    uint32_t family,VkImage original,VkFormat format,VkExtent2D extent,
-    const std::string& shaders,const std::string& output)
-{
-    using namespace encore::vr;
-    try {
-        if(!original||!extent.width||!extent.height||extent.width>8192||extent.height>8192)
+
+namespace {
+using namespace encore::vr;
+// Own the GPU resources once; every later frame updates only vertices and
+// the private sampled source. No headset buffers are exposed to Vulkan.
+struct CinemaRenderer {
+    VkDevice device;VkQueue queue;VkExtent2D extent; Resources r;
+    bool initialized=false;
+    CinemaRenderer(VkPhysicalDevice physical,VkDevice dev,VkQueue q,uint32_t family,VkFormat format,VkExtent2D size,const std::string& shaders):
+        device(dev),queue(q),extent(size),r(physical,dev) {
+        if(!extent.width||!extent.height||extent.width>8192||extent.height>8192)
             throw std::runtime_error("invalid game image");
         VkFormatProperties src{},dst{};
         vkGetPhysicalDeviceFormatProperties(physical,format,&src);
@@ -113,24 +125,11 @@ bool encoreCinemaReference(VkPhysicalDevice physical,VkDevice device,VkQueue que
         const VkFormatFeatureFlags dstNeed=VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT|VK_FORMAT_FEATURE_TRANSFER_SRC_BIT;
         if((src.optimalTilingFeatures&srcNeed)!=srcNeed||(dst.optimalTilingFeatures&dstNeed)!=dstNeed)
             throw std::runtime_error("unsupported cinema formats");
-        Resources r(physical,device);
         r.image(r.source,format,extent,VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT);
         r.image(r.target,VK_FORMAT_R8G8B8A8_UNORM,{width,height},VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-        Pose head{{0,1.2f,0},{0,0,0,1},true};
-        auto screen=cinemaScreen(head,2.4f,float(extent.width)/float(extent.height),2.5f);
-        if(!screen)throw std::runtime_error("invalid reference geometry");
-        Eye eyes[2]={{{{-.0295f,1.2f,0},{},true},{1.8418f,.9472f,1.329f,1.329f}},
-                     {{{ .0295f,1.2f,0},{},true},{.9472f,1.8418f,1.329f,1.329f}}};
-        std::array<CinemaVertex,12> verts{};
-        for(int i=0;i<2;++i){
-            auto v=cinemaVertices(*screen,eyes[i]);if(!v)throw std::runtime_error("bad eye projection");
-            std::copy(v->begin(),v->end(),verts.begin()+6*i);
-        }
-        r.buffer(r.vertices,sizeof verts,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+
+        r.buffer(r.vertices,sizeof(CinemaVertex)*12,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
         r.buffer(r.readback,bytes,VK_BUFFER_USAGE_TRANSFER_DST_BIT);
-        void* mapped=nullptr;
-        CHECK(vkMapMemory(device,r.vertices.memory,0,sizeof verts,0,&mapped));
-        std::memcpy(mapped,verts.data(),sizeof verts);vkUnmapMemory(device,r.vertices.memory);
         VkSamplerCreateInfo si{};si.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         si.minFilter=si.magFilter=VK_FILTER_NEAREST;si.mipmapMode=VK_SAMPLER_MIPMAP_MODE_NEAREST;
         si.addressModeU=si.addressModeV=si.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
@@ -199,10 +198,23 @@ bool encoreCinemaReference(VkPhysicalDevice physical,VkDevice device,VkQueue que
         cai.commandPool=r.cmdPool;cai.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;cai.commandBufferCount=1;
         CHECK(vkAllocateCommandBuffers(device,&cai,&r.cmd));
         VkFenceCreateInfo fc{};fc.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;CHECK(vkCreateFence(device,&fc,nullptr,&r.fence));
+
+    }
+    void render(VkImage original,VkImageLayout sourceLayout,const CinemaScreen& screen,const Eye (&eyes)[2]){
+        std::array<CinemaVertex,12> verts{};
+        for(int i=0;i<2;++i){
+            auto v=cinemaVertices(screen,eyes[i]);if(!v)throw std::runtime_error("bad eye projection");
+            std::copy(v->begin(),v->end(),verts.begin()+6*i);
+        }
+        void* mapped=nullptr;
+        CHECK(vkMapMemory(device,r.vertices.memory,0,sizeof verts,0,&mapped));
+        std::memcpy(mapped,verts.data(),sizeof verts);vkUnmapMemory(device,r.vertices.memory);
         VkCommandBufferBeginInfo begin{};begin.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        CHECK(vkResetCommandPool(device,r.cmdPool,0));
+        CHECK(vkResetFences(device,1,&r.fence));
         CHECK(vkBeginCommandBuffer(r.cmd,&begin));
-        if(!recordCinemaSourceCopy(r.cmd,original,r.source.image,extent,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-             VK_IMAGE_LAYOUT_UNDEFINED,vkCmdPipelineBarrier,vkCmdCopyImage))throw std::runtime_error("source copy rejected");
+        if(!recordCinemaSourceCopy(r.cmd,original,r.source.image,extent,sourceLayout,
+             initialized?VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:VK_IMAGE_LAYOUT_UNDEFINED,vkCmdPipelineBarrier,vkCmdCopyImage))throw std::runtime_error("source copy rejected");
         VkClearValue clear{};clear.color.float32[0]=clear.color.float32[1]=clear.color.float32[2]=.03f;clear.color.float32[3]=1;
         VkRenderPassBeginInfo rb{};rb.sType=VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;rb.renderPass=r.pass;rb.framebuffer=r.framebuffer;
         rb.renderArea={{0,0},{width,height}};rb.clearValueCount=1;rb.pClearValues=&clear;
@@ -231,19 +243,47 @@ bool encoreCinemaReference(VkPhysicalDevice physical,VkDevice device,VkQueue que
         VkResult waited=vkWaitForFences(device,1,&r.fence,VK_TRUE,5000000000ull);
         if(waited!=VK_SUCCESS){
             std::fprintf(stderr,"CINEMA_REFERENCE fatal fence rc=%d\n",int(waited));
-            std::fflush(stderr);std::_Exit(2);
+            std::fflush(stderr);
+#if defined(ENCORE_VR_CINEMA)
+            psvr2_shutdown();
+            for(;;)platform_sleep_us(100000);
+#else
+            std::_Exit(2);
+#endif
         }
-        r.pending=false;
-        std::vector<uint8_t> rgb(size_t(width)*height*3);
-        CHECK(vkMapMemory(device,r.readback.memory,0,bytes,0,&mapped));
-        const auto* p=static_cast<const uint8_t*>(mapped);
+        r.pending=false;initialized=true;
+
+    }
+    void copy(void* dst){
+        if(!initialized||!dst)throw std::runtime_error("no completed cinema frame");
+        void* mapped=nullptr;CHECK(vkMapMemory(device,r.readback.memory,0,bytes,0,&mapped));
+        std::memcpy(dst,mapped,bytes);vkUnmapMemory(device,r.readback.memory);
+    }
+};
+}
+bool encoreCinemaReference(VkPhysicalDevice physical,VkDevice device,VkQueue queue,
+    uint32_t family,VkImage original,VkFormat format,VkExtent2D extent,
+    const std::string& shaders,const std::string& output)
+{
+    try {
+        CinemaRenderer renderer(physical,device,queue,family,format,extent,shaders);
+        Pose head{{0,1.2f,0},{0,0,0,1},true};
+        auto screen=cinemaScreen(head,2.4f,float(extent.width)/float(extent.height),2.5f);
+        if(!screen)throw std::runtime_error("invalid reference geometry");
+        Eye eyes[2]={{{{-.0295f,1.2f,0},{},true},{1.8418f,.9472f,1.329f,1.329f}},
+                     {{{ .0295f,1.2f,0},{},true},{.9472f,1.8418f,1.329f,1.329f}}};
+        renderer.render(original,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,*screen,eyes);
+        std::vector<uint8_t> rgba(bytes),rgb(size_t(width)*height*3);
+        renderer.copy(rgba.data());
+        const auto* p=rgba.data();
         size_t nonbackground[2]{};
         for(uint32_t y=0;y<height;++y)for(uint32_t x=0;x<width;++x){
             size_t i=size_t(y)*width+x;
             for(int c=0;c<3;++c)rgb[3*i+c]=p[4*i+c];
             if(p[4*i]!=8||p[4*i+1]!=8||p[4*i+2]!=8)++nonbackground[x/eyeSize];
         }
-        vkUnmapMemory(device,r.readback.memory);
+
+
         if(nonbackground[0]<100||nonbackground[1]<100)throw std::runtime_error("empty stereo reference");
         std::ofstream file(output,std::ios::binary);
         file<<"P6\n"<<width<<" "<<height<<"\n255\n";
@@ -257,3 +297,107 @@ bool encoreCinemaReference(VkPhysicalDevice physical,VkDevice device,VkQueue que
     }
 }
 #undef CHECK
+
+#if defined(ENCORE_VR_CINEMA)
+namespace {
+struct NativeCinema {
+    std::unique_ptr<CinemaRenderer> renderer;
+    void* buffers[ENCORE_LIVE_SLOTS]{};
+    encore_live_slot slots[ENCORE_LIVE_SLOTS]{};
+    psvr2_info optics{};
+    std::optional<CinemaScreen> screen;
+    uint64_t frame=0,lastShown=0,start=0;
+    bool initialized=false,stopped=false;
+} native;
+Pose convert(const psvr2_pose& p){return {{p.pos[0],p.pos[1],p.pos[2]},
+    {p.quat[0],p.quat[1],p.quat[2],p.quat[3]},true};}
+}
+void encoreCinemaStop(){
+    if(native.stopped)return;
+    native.stopped=true;
+    psvr2_shutdown();
+    native.renderer.reset();
+    say("VR_CINEMA stopped after %llu frames; registered direct memory retained until title closure",
+        (unsigned long long)native.frame);
+}
+bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue queue,
+    uint32_t family,VkImage image,VkFormat format,VkExtent2D extent,const std::string& shaders){
+    if(native.stopped)return false;
+    uint64_t pending=0;
+    try{
+        if(!native.initialized){
+            native.renderer=std::make_unique<CinemaRenderer>(physical,device,queue,family,format,extent,shaders);
+            // Game Vulkan/AGC is initialized before Hmd2, as in V12.
+            psvr2_set_dualsense(0);psvr2_set_mirror(0);
+            if(psvr2_init_output()!=0)throw std::runtime_error("Hmd2 init");
+            psvr2_get_info(&native.optics);
+            if(native.optics.status||!psvr2_worn())throw std::runtime_error("headset not ready/worn");
+            for(float x:native.optics.fov)if(!std::isfinite(x)||x<=0)throw std::runtime_error("invalid FOV");
+            for(auto& b:native.buffers){b=psvr2_cinema_alloc(size_t(bytes));if(!b)throw std::runtime_error("direct buffer allocation");}
+            if(psvr2_output_start(eyeSize,eyeSize,native.buffers,ENCORE_LIVE_SLOTS,PSVR2_MODE_120_HALF)!=0)
+                throw std::runtime_error("VR output start");
+            say("VR_CINEMA settling tracking; look forward and keep head still");
+            const uint64_t begin=psvr2_now_us();encore_origin_gate gate{};
+            while(psvr2_now_us()-begin<10000000ull&&psvr2_worn()&&!psvr2_exit_requested()){
+                psvr2_pose head{};
+                if(psvr2_head(psvr2_now_us(),&head,nullptr,nullptr,nullptr)&&
+                   encore_origin_sample(&gate,psvr2_now_us()-begin,head.pos,head.quat)){
+                    native.screen=cinemaScreen(convert(head),3.6f,float(extent.width)/extent.height,2.f);break;
+                }
+                platform_sleep_us(10000);
+            }
+            if(!native.screen)throw std::runtime_error("tracking origin did not settle");
+            native.start=psvr2_now_us();native.initialized=true;
+            say("VR_CINEMA ready 1080p game / 1024x1024 per eye, 60 FPS / 120 Hz output; DualSense or guitar/drums, hold Sense menu to recenter");
+        }
+        if(!psvr2_worn()||psvr2_exit_requested()||psvr2_now_us()-native.start>=300000000ull)
+            throw std::runtime_error("wear/exit/5-minute alpha limit");
+        if(extent.width!=native.renderer->extent.width||extent.height!=native.renderer->extent.height)
+            throw std::runtime_error("game extent changed; restart title");
+        const uint64_t id=native.frame+1;uint64_t display=0;
+        psvr2_stats before{},after{};psvr2_get_stats(&before);
+        if(psvr2_begin_frame(id,&display)!=0)throw std::runtime_error("begin frame");
+        pending=id;psvr2_get_stats(&after);
+        if(after.errors!=before.errors||after.queue_full!=before.queue_full||after.repeated!=before.repeated)
+            throw std::runtime_error("unexpected reprojection queue activity");
+        psvr2_pose head{},poses[2]{};
+        if(!psvr2_head(display,&head,poses,nullptr,nullptr))throw std::runtime_error("tracking lost");
+        psvr2_poll();
+        if(psvr2_take_recenter()){
+            auto screen=cinemaScreen(convert(head),3.6f,float(extent.width)/extent.height,2.f);
+            if(screen)native.screen=screen;
+        }
+        const auto& f=native.optics.fov;
+        Eye eyes[2]={{convert(poses[0]),{f[0],f[1],f[2],f[3]}},
+                     {convert(poses[1]),{f[1],f[0],f[2],f[3]}}};
+        uint64_t shown=0;int slot=1;
+        if(native.frame){
+            int rc=psvr2_cinema_flip(&shown);
+            if(shown<native.lastShown)throw std::runtime_error("regressed flip marker");
+            slot=encore_live_choose(native.slots,shown,native.frame,psvr2_now_us(),rc);
+            if(slot<0)throw std::runtime_error("pre-render buffer gate");
+        }
+        const uint64_t gpu=psvr2_now_us();
+        native.renderer->render(image,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,*native.screen,eyes);
+        psvr2_note_gpu(psvr2_now_us()-gpu);
+        if(native.frame){
+            uint64_t latest=0;int rc=psvr2_cinema_flip(&latest);
+            if(latest<shown||!encore_live_eligible(&native.slots[slot],latest,native.frame,psvr2_now_us(),rc))
+                throw std::runtime_error("post-fence buffer gate");
+            native.lastShown=latest;
+        }
+        if(!psvr2_worn()||psvr2_exit_requested())throw std::runtime_error("headset removed");
+        native.renderer->copy(native.buffers[slot]);
+        const float left[4]={f[0],f[1],f[2],f[3]},right[4]={f[1],f[0],f[2],f[3]};
+        int rc=psvr2_submit(slot,id,display,&head,left,right);pending=0;
+        if(rc)throw std::runtime_error("submit failed");
+        native.slots[slot]={id,display};native.frame=id;
+        if(id<=4||id%300==0)say("VR_CINEMA frame=%llu slot=%d shown=%llu compositor_us=%llu",
+            (unsigned long long)id,slot,(unsigned long long)native.lastShown,(unsigned long long)(psvr2_now_us()-gpu));
+        return true;
+    }catch(const std::exception& e){
+        if(pending)psvr2_repeat_frame(pending);
+        say("VR_CINEMA STOP %s",e.what());encoreCinemaStop();return false;
+    }
+}
+#endif

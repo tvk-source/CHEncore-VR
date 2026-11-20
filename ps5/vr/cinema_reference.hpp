@@ -8,3 +8,8 @@
 bool encoreCinemaReference(VkPhysicalDevice physical,VkDevice device,VkQueue queue,
     uint32_t family,VkImage source,VkFormat format,VkExtent2D extent,
     const std::string& shaders,const std::string& output);
+
+#if defined(ENCORE_VR_CINEMA)
+bool encoreCinemaNativeFrame(VkPhysicalDevice,VkDevice,VkQueue,uint32_t,VkImage,VkFormat,VkExtent2D,const std::string&);
+void encoreCinemaStop();
+#endif

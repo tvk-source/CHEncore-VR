@@ -1,3 +1,6 @@
+#if defined(ENCORE_VR_CINEMA)
+#include "../ps5/vr/cinema_reference.hpp"
+#endif
 /*
 * Vulkan Example base class
 *
@@ -68,6 +71,9 @@ VkResult VulkanExampleBase::createInstance()
 			}
 		}
 	}
+#if defined(ENCORE_VR_CINEMA)
+    swapChain.offscreen=true;
+#endif
 #if defined(PS5_HOST_REFERENCE)
 	// PS5: a driver without headless surfaces (NVIDIA's) renders the host reference to
 	// offscreen images instead (VulkanSwapChain), and the instance asks for no surface
@@ -907,6 +913,9 @@ void VulkanExampleBase::submitFrame(bool skipQueueSubmit)
 		.pImageIndices = &currentImageIndex
 	};
 	VkResult result = vkQueuePresentKHR(queue, &presentInfo);
+#if defined(ENCORE_VR_CINEMA)
+    if(result==VK_SUCCESS&&!encoreCinemaNativeFrame(physicalDevice,device,queue,swapChain.queueNodeIndex,swapChain.images[currentImageIndex],swapChain.colorFormat,{width,height},"/app0/shaders/cinema"))quit=true;
+#endif
 	// Recreate the swapchain if it's no longer compatible with the surface (OUT_OF_DATE) or no longer optimal for presentation (SUBOPTIMAL)
 	if ((result == VK_ERROR_OUT_OF_DATE_KHR) || (result == VK_SUBOPTIMAL_KHR) || (result == VK_ERROR_SURFACE_LOST_KHR)) {
 		windowResize();
@@ -1089,7 +1098,9 @@ VulkanExampleBase::VulkanExampleBase()
 VulkanExampleBase::~VulkanExampleBase()
 {
 	// Clean up Vulkan resources
-	swapChain.cleanup();
+#if defined(ENCORE_VR_CINEMA)
+    encoreCinemaStop();
+#endif
 	if (descriptorPool != VK_NULL_HANDLE) {
 		vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 	}
@@ -1100,6 +1111,7 @@ VulkanExampleBase::~VulkanExampleBase()
 	for (auto& frameBuffer : frameBuffers) {
 		vkDestroyFramebuffer(device, frameBuffer, nullptr);
 	}
+	swapChain.cleanup();
 	for (auto& shaderModule : shaderModules) {
 		vkDestroyShaderModule(device, shaderModule, nullptr);
 	}
@@ -3328,7 +3340,12 @@ void VulkanExampleBase::setupRenderPass()
 			.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE,
 			.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
 			.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-			.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+			.finalLayout =
+#if defined(ENCORE_VR_CINEMA)
+                VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+#else
+                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR
+#endif
 		},
 		// Depth attachment
 		VkAttachmentDescription{
@@ -3443,6 +3460,10 @@ void VulkanExampleBase::beginDynamicRendering(VkCommandBuffer cmdBuffer)
 void VulkanExampleBase::endDynamicRendering(VkCommandBuffer cmdBuffer)
 {
 	vkCmdEndRendering(cmdBuffer);
+#if defined(ENCORE_VR_CINEMA)
+    // Private images are not presentation-engine images.
+    if(swapChain.offscreen)return;
+#endif
 	vks::tools::insertImageMemoryBarrier(
 		cmdBuffer,
 		swapChain.images[currentImageIndex],

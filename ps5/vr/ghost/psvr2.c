@@ -1993,6 +1993,10 @@ static int apply_mode(int mode)
  * VR port counts vblanks, at most 5 s. */
 int sceVideoOutGetVblankStatus(int handle, void *status);
 int sceVideoOutGetFlipStatus(int handle, void *status);
+#if defined(ENCORE_VR_CINEMA)
+void *psvr2_cinema_alloc(size_t bytes){return bytes==2048u*1024u*4u?direct_alloc(bytes,0x10000):NULL;}
+int psvr2_cinema_flip(uint64_t *shown){uint64_t status[32]={0};if(!H.active||!shown)return -1;int rc=sceVideoOutGetFlipStatus(H.vh,status);*shown=status[3];return rc;}
+#endif
 static int wait_display_live(void)
 {
     uint64_t st[32] = {0};
