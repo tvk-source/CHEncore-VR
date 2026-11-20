@@ -301,3 +301,18 @@ song parser/library, commercial songs and instrument play remain pending.
 Same validated live presentation path and safety gate, longer exposure
 only. Stop immediately if uncomfortable. Keep previous working package.
 Host regression test added; native integration unverified.
+
+## V12 hardware results (2026-11-20)
+V12 87cbb87: 2370/2370 submissions in 36.55s, 1800 live frames in
+30.000s at 60.00 FPS, 1797 previously-used slot copies, 0 blocked.
+Live GPU mean 3732.4us max 4913us; copy mean 647.4us max 793us.
+Zero submission errors, queue-full waits or budget overruns;
+2369 valid flip samples, zero invalid/regressed, zero observed lag.
+All five lanes detected and both controllers tracked throughout.
+Original evaluator judged all 56 notes: 11 hits, 45 misses, score 550,
+best combo 1, 120 off-window/wrong input edges. Audio opened, callback
+produced 1440768 sample frames (30.016s at 48kHz). This does not prove
+headphone audibility, physical A/V sync or visual comfort/world lock.
+Haptic resolution 0x80020003 and unregister 0x80290009 remain unresolved.
+GPU shutdown complete and SUBMISSIONS_PASS. No new hardware run needed
+for the host-only cinema groundwork.

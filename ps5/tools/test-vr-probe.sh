@@ -35,3 +35,6 @@ python3 tests/encore_asset_build_dir_tests.py
 
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pedantic tests/encore_probe_practice_tests.cpp ps5/vr/probe_practice.cpp examples/cloneheronative/gameplay/song_pipeline.cpp -o "$tmp/encore_probe_practice_tests"
 "$tmp/encore_probe_practice_tests"
+
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pedantic tests/encore_cinema_geometry_tests.cpp -o "$tmp/encore_cinema_geometry_tests"
+"$tmp/encore_cinema_geometry_tests"
