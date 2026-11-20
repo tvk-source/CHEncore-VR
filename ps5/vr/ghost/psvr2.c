@@ -2440,15 +2440,16 @@ int psvr2_selftest(const char *tag, int frames)
         if (!buf[b])
             return -1;
         uint32_t *p = buf[b];
-        // Both eyes see the same virtual reference plane. All buffers are immutable.
+        // Both eyes see the same three-depth reference scene. All buffers are immutable.
         for (unsigned y = 0; y < EYE; ++y)
             for (unsigned x = 0; x < 2 * EYE; ++x) {
                 const unsigned e = x/EYE;
                 const float u = ((float)(x%EYE)+.5f)/EYE;
                 const float v = ((float)y+.5f)/EYE;
-                p[(size_t)y*2*EYE+x] = encore_probe_pixel(&optical[e],u,v);
+                p[(size_t)y*2*EYE+x] = encore_probe_scene_pixel(&optical[e],u,v);
             }
     }
+    XRLOG("VR_PROBE scene: square left 1m, cross/ring center 2m, diamond right 4m; head-relative");
     const uint64_t qf0 = H.stats.queue_full, err0 = H.stats.errors, fr0 = H.stats.frames;
     if (psvr2_output_start(EYE, EYE, buf, NBUF, PSVR2_MODE_90) != 0) {
         XRLOG("selftest %s: output start failed", tag);
@@ -2485,6 +2486,27 @@ int psvr2_selftest(const char *tag, int frames)
         if (psvr2_submit((i-1) % NBUF, (uint64_t)i, disp, &dev, tl, tr) != 0) {
             XRLOG("selftest %s: submission failed at %d", tag, i);
             break;
+        }
+        if (i==1 || i%450==0 || i==frames) {
+            // Diagnostic only: measured eye baseline and head-local offsets.
+            // No change to the submitted pose or runtime projection.
+            float inv[4]={-dev.quat[0],-dev.quat[1],-dev.quat[2],dev.quat[3]};
+            float off[2][3];
+            for(int side=0;side<2;++side) {
+                float delta[3];
+                for(int k=0;k<3;++k) delta[k]=eyes[side].pos[k]-dev.pos[k];
+                qrot(inv,delta,off[side]);
+            }
+            float dx=off[1][0]-off[0][0],dy=off[1][1]-off[0][1],dz=off[1][2]-off[0][2];
+            float baseline=sqrtf(dx*dx+dy*dy+dz*dz);
+            float dot=0.f;
+            for(int k=0;k<4;++k) dot+=eyes[0].quat[k]*eyes[1].quat[k];
+            XRLOG("VR_PROBE pose frame=%d baseline_mm=%.2f eyeL=(%.4f %.4f %.4f) eyeR=(%.4f %.4f %.4f) eye_quat_absdot=%.6f",
+                  i,(double)(1000.f*baseline),(double)off[0][0],(double)off[0][1],(double)off[0][2],
+                  (double)off[1][0],(double)off[1][1],(double)off[1][2],(double)fabsf(dot));
+            XRLOG("VR_PROBE head frame=%d pos=(%.4f %.4f %.4f) quat=(%.5f %.5f %.5f %.5f)",
+                  i,(double)dev.pos[0],(double)dev.pos[1],(double)dev.pos[2],(double)dev.quat[0],
+                  (double)dev.quat[1],(double)dev.quat[2],(double)dev.quat[3]);
         }
         ok++;
     }

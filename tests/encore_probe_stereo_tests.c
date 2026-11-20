@@ -28,6 +28,39 @@ int main(void)
     assert(!encore_probe_eye_init(&e[0],fov,NAN,0));
     assert(!encore_probe_eye_init(&e[0],fov,.059f,2));
     assert(ENCORE_PROBE_FRAMES==2700 && ENCORE_PROBE_DEADLINE_US==34000000);
-    puts("PASS asymmetric stereo reference plane, IPD, inverse projection and duration");
+    const float bads[]={NAN, INFINITY, -INFINITY, 0.f};
+    for(unsigned i=0;i<sizeof(bads)/sizeof(bads[0]);++i) {
+        float invalid[4]={bads[i],.9472f,1.329f,1.329f};
+        assert(!encore_probe_eye_init(&e[0],invalid,.059f,0));
+        assert(!encore_probe_eye_init(&e[0],fov,bads[i],0));
+    }
+    assert(encore_probe_eye_init(&e[0],fov,.059f,0));
+    float disparity[3];
+    const float depths[]={1.f,2.f,4.f};
+    for(int k=0;k<3;++k) {
+        float a[2],b;
+        for(int s=0;s<2;++s) {
+            encore_probe_eye plane=e[s];
+            plane.depth=depths[k];
+            encore_probe_project(&plane,0.f,0.f,&a[s],&b);
+        }
+        disparity[k]=a[0]-a[1]-(fov[0]-fov[1])/(fov[0]+fov[1]);
+        assert(fabsf(disparity[k]-.059f/(depths[k]*(fov[0]+fov[1])))<1e-5f);
+    }
+    assert(disparity[0]>disparity[1] && disparity[1]>disparity[2]);
+    for(int s=0;s<2;++s) {
+        encore_probe_eye plane=e[s];
+        float a,b;
+        plane.depth=1.f;
+        encore_probe_project(&plane,-.48f,.13f,&a,&b);
+        assert(encore_probe_scene_pixel(&e[s],a,b)==UINT32_C(0xff808080));
+        plane.depth=2.f;
+        encore_probe_project(&plane,0.f,0.f,&a,&b);
+        assert(encore_probe_scene_pixel(&e[s],a,b)==UINT32_C(0xff808080));
+        plane.depth=4.f;
+        encore_probe_project(&plane,1.92f,.52f,&a,&b);
+        assert(encore_probe_scene_pixel(&e[s],a,b)==UINT32_C(0xff808080));
+    }
+    puts("PASS asymmetric stereo reference, IPD, three depths and invalid optics rejection");
     return 0;
 }

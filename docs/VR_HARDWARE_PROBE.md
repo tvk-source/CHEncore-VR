@@ -111,3 +111,25 @@ the frame loop. After the test close the idle title through the PS menu.
 No changes to firmware, headset initialization, buffer registration or
 submission ABI. VO_BUSY on unregister remains unresolved, so no buffers are
 rewritten or reused for another session before title closure.
+
+## V4 hardware validation and V5 depth test (2026-11-20)
+V4 (956dd44) passed all six host checks and the native build. Clang emitted
+18 redundant generic-association warnings from two SDK isfinite macro calls
+in probe_stereo.h. V5 replaces these with bounded positive comparisons,
+which reject NaN, infinity and out-of-range values without suppressing warnings.
+On native firmware 7.61 V4 submitted 2700/2700 frames in 30.01 s (90.0 fps),
+zero queue-full waits, repeats or submission errors in the reported intervals.
+The tester confirmed one fused centered image, stable head-relative movement,
+and expected black output after the test. The log reached SUBMISSIONS_PASS
+and idle. VO_BUSY during unregister remains unresolved; other shutdown
+return codes were zero. CRASH KILL_END at closure is not a clean-exit proof.
+V5 keeps the verified optical reference at two metres and adds a square on
+the left at one metre and a diamond on the right at four metres. All three
+are head-relative and all three registered buffers remain immutable.
+Pose telemetry at frame 1 and every 450 frames records measured eye baseline,
+head-local offsets, eye quaternion agreement and device pose for future
+world-space rendering. It is not used to modify the framebuffer or submission.
+The 30-second limit and existing wear/tracking stop checks remain. Stop
+immediately on discomfort or double vision. After the test close the idle
+title through the PS menu. V5 is a depth/pose diagnostic, not a world-locked
+scene or a Vulkan renderer. No GhostVR payload independence claim.
