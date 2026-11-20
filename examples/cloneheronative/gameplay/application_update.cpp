@@ -67,7 +67,7 @@ bool ApplicationUpdate::begin(bool download){
     if(pthread_create(&thread_,nullptr,worker,this)){publish(UpdateState::Error,"Could not start update worker.");return false;}
     joinable_=true;return true;
 }
-bool ApplicationUpdate::check(){poll();if(joinable_)return false;installJob_=false;selfTestJob_=false;return begin(false);}
+bool ApplicationUpdate::check(){publish(UpdateState::Error,"VR development build: upstream updates disabled.");return false;}
 bool ApplicationUpdate::selfTest(bool runtime){poll();if(joinable_)return false;installJob_=false;selfTestJob_=true;runtimeTestJob_=runtime;return begin(false);}
 bool ApplicationUpdate::download(UpdateFormat format){if(state()!=UpdateState::Available)return false;installJob_=false;format_=format;return begin(true);}
 bool ApplicationUpdate::install(std::string& error){

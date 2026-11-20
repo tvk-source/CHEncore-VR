@@ -30,9 +30,9 @@ class BuilderTests(unittest.TestCase):
 
     def template(self, extra=None):
         with zipfile.ZipFile(self.bundle / 'base-game.zip', 'w') as z:
-            for name, data in self.contents.items(): z.writestr('PPSA99200/' + name, data)
+            for name, data in self.contents.items(): z.writestr('PPSA98743/' + name, data)
             if extra: extra(z)
-        self.config = {'schema': 1, 'title_id': 'PPSA99200', 'version': '1.5.1', 'source': 'test',
+        self.config = {'schema': 1, 'title_id': 'PPSA98743', 'version': '1.5.1', 'source': 'test',
                        'bundled_assets_supported': True, 'catalog': self.catalog,
                        'files': {p: hashlib.sha256(b).hexdigest() for p, b in self.contents.items()},
                        'zip_sha256': core.sha_file(self.bundle / 'base-game.zip')}
@@ -52,8 +52,8 @@ class BuilderTests(unittest.TestCase):
     def test_complete_private_folder_no_source_changes(self):
         before = (self.game / 'resources.assets').read_bytes()
         output = self.build()
-        self.assertEqual((output / 'PPSA99200/eboot.bin').read_bytes(), self.contents['eboot.bin'])
-        self.assertTrue((output / ('PPSA99200/assets/' + core.PACK_NAME)).is_file())
+        self.assertEqual((output / 'PPSA98743/eboot.bin').read_bytes(), self.contents['eboot.bin'])
+        self.assertTrue((output / ('PPSA98743/assets/' + core.PACK_NAME)).is_file())
         self.assertTrue(json.loads((output / 'build-info.json').read_text())['personal_assets'])
         for line in (output / 'SHA256SUMS').read_text().splitlines():
             h, name = line.split('  ', 1); self.assertEqual(core.sha_file(output / name), h)
@@ -84,10 +84,10 @@ class BuilderTests(unittest.TestCase):
 
     def test_damage_traversal_extra_duplicate_and_symlink_rejected(self):
         cases = [lambda z: z.writestr('../escape', b'x'),
-                 lambda z: z.writestr('PPSA99200/assets/unknown', b'x'),
-                 lambda z: z.writestr('PPSA99200/EBOOT.bin', b'x')]
+                 lambda z: z.writestr('PPSA98743/assets/unknown', b'x'),
+                 lambda z: z.writestr('PPSA98743/EBOOT.bin', b'x')]
         def symlink(z):
-            info = zipfile.ZipInfo('PPSA99200/eboot.bin'); info.external_attr = 0o120777 << 16; z.writestr(info, 'outside')
+            info = zipfile.ZipInfo('PPSA98743/eboot.bin'); info.external_attr = 0o120777 << 16; z.writestr(info, 'outside')
         cases.append(symlink)
         for extra in cases:
             self.template(extra)
@@ -98,8 +98,8 @@ class BuilderTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'damaged'): self.build()
 
     def test_unsafe_windows_archive_paths(self):
-        for name in ('/absolute', 'PPSA99200/../escape', 'PPSA99200/a:stream', 'PPSA99200/CON.txt',
-                     'PPSA99200/a\\b', 'PPSA99200/x. /bad', 'PPSA99200//bad'):
+        for name in ('/absolute', 'PPSA98743/../escape', 'PPSA98743/a:stream', 'PPSA98743/CON.txt',
+                     'PPSA98743/a\\b', 'PPSA98743/x. /bad', 'PPSA98743//bad'):
             with self.subTest(name=name), self.assertRaises(ValueError): core.safe_name(name)
 
     def test_pack_corruption_and_trailing_bytes(self):

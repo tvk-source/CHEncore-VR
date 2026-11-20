@@ -18,7 +18,7 @@ and RADV objects as the embedded executable. A versioned initialization contract
 returns its entry point to the bootstrap; the engine runs on the main thread after
 the loader returns, before the usual pad, audio and Vulkan initialization. Assets
 and shaders reside alongside the module in a complete runtime under
-`/data/homebrew/PPSA99200/userdata/updates`. The original installed folder, PKG or
+`/data/homebrew/PPSA98743/userdata/updates`. The original installed folder, PKG or
 exFAT container stays intact. The PS5 app-information screen may continue to show
 the base package version; the in-game version identifies the running engine.
 A small activation record selects the new runtime;
@@ -59,7 +59,7 @@ record](native-pkg-validation.md). No console payload change was needed.
 
 The shared internal library is `/data/homebrew/SONGS`. Song downloads and the
 existing USB copy actions use it. At startup, folders from
-`/data/homebrew/PPSA99200/songs` move there. Existing destinations are never
+`/data/homebrew/PPSA98743/songs` move there. Existing destinations are never
 overwritten: collisions get a numbered migrated name. Failed moves remain in
 the legacy root, which remains a scan fallback. USB libraries still use a
 root-level `SONGS` folder on an exFAT drive.

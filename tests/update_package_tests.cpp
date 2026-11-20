@@ -22,9 +22,9 @@ int main(){
  for(const char* path:{"../eboot.bin","assets/../../songs/foo","/eboot.bin","userdata/profiles.json","songs/notes.chart","assets//file","assets/./file","assets/file\\x","assets/file\n"})assert(!updatePath(path));
  assert(updatePath("assets/song/icons.png") && updatePath("eboot.bin"));
  char temp[]="/tmp/encore-update-XXXXXX";assert(mkdtemp(temp));fs::path root=temp,app=root/"app",work=root/"work",pkg=root/"update.encore";
- const std::string param=R"({"titleId":"PPSA99200","contentVersion":"01.000.041"})";
+ const std::string param=R"({"titleId":"PPSA98743","contentVersion":"01.000.041"})";
  const std::vector<std::string> names{"assets/new.txt","eboot.bin","sce_sys/param.json"},data{"art","new executable",param};
- Json j={{"schema",1u},{"title","PPSA99200"},{"version",41u},{"files",Json::array()}};
+ Json j={{"schema",1u},{"title","PPSA98743"},{"version",41u},{"files",Json::array()}};
  for(size_t i=0;i<names.size();++i)j["files"].push_back({{"path",names[i]},{"size",data[i].size()},{"sha256",hash(data[i])}});
  package(pkg,j,data);std::string error;
  assert(stagePackage(pkg.string(),work.string(),41,error));assert(!stagePackage(pkg.string(),work.string(),42,error));
@@ -56,7 +56,7 @@ int main(){
   auto manifest=j;manifest["version"]=version;
   auto content=data;content[1]=executable;
   char versionText[24];std::snprintf(versionText,sizeof(versionText),"01.%03u.%03u",version/1000,version%1000);
-  content[2]=Json{{"titleId","PPSA99200"},{"contentVersion",versionText}}.dump();
+  content[2]=Json{{"titleId","PPSA98743"},{"contentVersion",versionText}}.dump();
   for(size_t i=0;i<content.size();++i){manifest["files"][i]["size"]=content[i].size();manifest["files"][i]["sha256"]=hash(content[i]);}
   if(version>=10000){const auto module="native module "+executable;manifest["files"].push_back({{"path","sce_module/encore-engine.prx"},{"size",module.size()},{"sha256",hash(module)}});content.push_back(module);}
   package(pkg,manifest,content);assert(stagePackage(pkg.string(),runtimeWork.string(),version,error));

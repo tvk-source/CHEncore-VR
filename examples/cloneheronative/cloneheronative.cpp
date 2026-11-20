@@ -9061,7 +9061,7 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
                      "Automatic release checks and verified update downloads.\n"
                      "Verified updates restart into a separate runtime.\n"
                      "Failed first launches restore the previous build.\n"
-                     "Internal songs now use /data/homebrew/SONGS.\n"
+                     "Internal songs now use /data/homebrew/SONGS-VR.\n"
                      "Existing internal libraries migrate without overwriting.\n"
                      "Select and remove multiple installed or bundled songs.\n"
                      "Scores, profiles and bundled-song removal are preserved."},
@@ -9193,7 +9193,7 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
                     {"Built-in Encore Browser","Browse song covers, charted instruments and charters. Download songs or queue several charts without leaving the game."},
                     {"Portable USB libraries","Use an exFAT-formatted drive with a SONGS folder at its root. Nested collections are detected; unplugging removes those songs from the list."},
                     {"Application updates","Check for releases at startup or in Settings. Confirm the verified update, then restart and play. Songs, profiles and scores are preserved."},
-                    {"Shared song storage","Internal songs live in /data/homebrew/SONGS. Older libraries move automatically. Select several installed songs and confirm removal together."},
+                    {"Shared song storage","Internal songs live in /data/homebrew/SONGS-VR. Older libraries move automatically. Select several installed songs and confirm removal together."},
                     {"Copy songs both ways","Copy USB songs to the console or console songs to USB. Confirm the song count before copying; existing charts are skipped."},
                     {"Beta tester diagnostics","A small rotating background log records important loading, display and controller events in userdata/logs/encore-test.log."},
                     {"Direct USB instruments","Supported USB rhythm controllers connect directly in game without a separate GameBridge payload."},

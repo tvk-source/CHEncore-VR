@@ -12,7 +12,7 @@
 // Separate from the gameplay event log, which starts after Vulkan initialization.
 namespace encore_startup {
 inline bool enabled=false;
-inline const char* path="/data/homebrew/PPSA99200/userdata/logs/encore-startup.log";
+inline const char* path="/data/homebrew/PPSA98743/userdata/logs/encore-startup.log";
 inline void checkpoint(const char* stage) noexcept {
     if(!enabled)return;
     FILE* file=std::fopen(path,"ab");
@@ -22,7 +22,7 @@ inline void checkpoint(const char* stage) noexcept {
     std::fflush(file);(void)fsync(fileno(file));std::fclose(file);
 }
 inline bool begin(const char* title) noexcept {
-    for(const char* dir:{"/data/homebrew","/data/homebrew/PPSA99200","/data/homebrew/PPSA99200/userdata","/data/homebrew/PPSA99200/userdata/logs"})
+    for(const char* dir:{"/data/homebrew","/data/homebrew/PPSA98743","/data/homebrew/PPSA98743/userdata","/data/homebrew/PPSA98743/userdata/logs"})
         if(mkdir(dir,0777)!=0 && errno!=EEXIST)return false;
     char previous[512];std::snprintf(previous,sizeof(previous),"%s.previous",path);
     (void)std::rename(path,previous);

@@ -28,7 +28,7 @@ Use the resulting folder or container with your compatible PS5 homebrew setup. T
 
 **Your personal assets are already inside the output.** First launch shows a preparation progress display and automatically installs them into persistent storage. No separate asset file copy, FTP upload or console import selection is needed. Later launches use the prepared assets.
 
-Assets are kept at `/data/homebrew/PPSA99200/userdata/pc-assets/`, outside executable/runtime updates. Songs, profiles and scores remain intact. If a future build requires a different asset catalog, rebuild with its matching desktop builder. The game never downloads original PC assets from GitHub or another service.
+Assets are kept at `/data/homebrew/PPSA98743/userdata/pc-assets/`, outside executable/runtime updates. Songs, profiles and scores remain intact. If a future build requires a different asset catalog, rebuild with its matching desktop builder. The game never downloads original PC assets from GitHub or another service.
 
 **Keep generated personal installs private.** They contain your imported resources. Do not upload them to GitHub, share them as releases, or attach them to issue reports. Share the unmodified public builder ZIP instead.
 

@@ -108,7 +108,7 @@ def safe_name(name):
 
 def template_config(bundle):
     config = json.loads((bundle / 'template.json').read_text(encoding='utf-8'))
-    if config.get('schema') != 1 or config.get('title_id') != 'PPSA99200' or not config.get('bundled_assets_supported'):
+    if config.get('schema') != 1 or config.get('title_id') != 'PPSA98743' or not config.get('bundled_assets_supported'):
         raise ValueError('Use an official desktop-builder template with automatic personal-asset setup.')
     recipes = create_asset_pack.load_recipes(IMPORTER / 'recipes.json')
     if config.get('catalog') != recipes['catalog']:

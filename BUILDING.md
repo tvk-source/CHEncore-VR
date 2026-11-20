@@ -30,6 +30,6 @@ bash ps5/tools/build.sh
 
 `setup-sdk.sh` installs the pinned SDK into `.deps/native/ps5-payload-sdk`. The release build uses C++20 with exceptions and RTTI disabled and retains the native Vulkan dynamic-rendering and direct-to-display setup.
 
-Output is written to `dist/PPSA99200`. Build intermediates are in `build/ps5`. A source archive extracted without Git metadata must first be initialized and committed locally for the notice generator; its local build identity will differ from the published build. A byte-identical rebuild is not guaranteed.
+Output is written to `dist/PPSA98743`. Build intermediates are in `build/ps5`. A source archive extracted without Git metadata must first be initialized and committed locally for the notice generator; its local build identity will differ from the published build. A byte-identical rebuild is not guaranteed.
 
 Deployment entry points are `ps5/tools/deploy.sh` and `ps5/tools/run.sh`. Console connection settings belong in the separately configured, ignored environment file used by the console tools. Do not commit console addresses or credentials.

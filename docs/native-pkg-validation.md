@@ -57,7 +57,7 @@ The existing Vulkan/RADV startup, renderer and console payload setup are unchang
 Build after `ps5/tools/build.sh`:
 
 ```sh
-python3 ps5/tools/build-native-pkg.py dist/PPSA99200 output/Encore.pkg \
+python3 ps5/tools/build-native-pkg.py dist/PPSA98743 output/Encore.pkg \
     --tool /path/to/ffpfsc-pkg-tool
 ```
 

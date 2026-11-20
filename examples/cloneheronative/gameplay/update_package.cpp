@@ -62,7 +62,7 @@ bool readJson(const std::string& p,Json& out){
 bool hashString(const std::string& h){return h.size()==64 && std::all_of(h.begin(),h.end(),[](char c){return (c>='0' && c<='9') || (c>='a' && c<='f');});}
 bool parse(const Json& j,Manifest& manifest,bool plan=false){
     if(!j.is_object() || !j.count("schema") || !j["schema"].is_number_unsigned() || j["schema"]!=1 ||
-       !j.count("title") || j["title"]!="PPSA99200" || !j.count("version") || !j["version"].is_number_unsigned())return false;
+       !j.count("title") || j["title"]!="PPSA98743" || !j.count("version") || !j["version"].is_number_unsigned())return false;
     auto version=j["version"].get<uint64_t>();if(!version || version>999999)return false;manifest.version=unsigned(version);
     if(!j.count("files") || !j["files"].is_array() || j["files"].empty() || j["files"].size()>4096)return false;
     uint64_t total=0;bool executable=false,parameters=false,engine=false;
@@ -75,7 +75,7 @@ bool parse(const Json& j,Manifest& manifest,bool plan=false){
         executable|=e.path=="eboot.bin";parameters|=e.path=="sce_sys/param.json";engine|=e.path=="sce_module/encore-engine.prx";manifest.files.push_back(std::move(e));
     }return executable && parameters && (manifest.version<10000 || engine);
 }
-Json serialize(const Manifest& m){Json j={{"schema",1u},{"title","PPSA99200"},{"version",m.version},{"files",Json::array()}};for(const auto& f:m.files)j["files"].push_back({{"path",f.path},{"size",f.size},{"sha256",f.hash},{"existed",f.existed},{"backup_sha256",f.backupHash}});return j;}
+Json serialize(const Manifest& m){Json j={{"schema",1u},{"title","PPSA98743"},{"version",m.version},{"files",Json::array()}};for(const auto& f:m.files)j["files"].push_back({{"path",f.path},{"size",f.size},{"sha256",f.hash},{"existed",f.existed},{"backup_sha256",f.backupHash}});return j;}
 bool copy(const std::string& from,const std::string& to,const std::string& expected={}){
     struct stat st{};if(rhythm::fs::statusNoFollow(from.c_str(),&st) || !S_ISREG(st.st_mode) || !parents(to))return false;
     FILE* in=std::fopen(from.c_str(),"rb");if(!in)return false;
@@ -147,7 +147,7 @@ bool stagePackage(const std::string& package,const std::string& work,unsigned ve
         if(!ok){error=stopped(cancel)?"Update cancelled.":"Update file verification failed or storage is full.";return false;}
     }
     if(std::fgetc(in)!=EOF || std::ferror(in)){error="Unexpected data after update payload.";return false;}
-    Json param;if(!readJson(work+"/stage/sce_sys/param.json",param) || !param.is_object() || !param.count("titleId") || param["titleId"]!="PPSA99200" || !param.count("contentVersion") || !param["contentVersion"].is_string()){error="Update application identity is invalid.";return false;}
+    Json param;if(!readJson(work+"/stage/sce_sys/param.json",param) || !param.is_object() || !param.count("titleId") || param["titleId"]!="PPSA98743" || !param.count("contentVersion") || !param["contentVersion"].is_string()){error="Update application identity is invalid.";return false;}
     char expected[24];std::snprintf(expected,sizeof(expected),"01.%03u.%03u",version/1000,version%1000);
     if(param["contentVersion"]!=expected){error="Update application version is inconsistent.";return false;}
     if(!writeText(work+"/manifest.json",serialize(m).dump())){error="Cannot save verified update manifest.";return false;}return true;

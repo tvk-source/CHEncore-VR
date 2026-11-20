@@ -6,7 +6,7 @@ uses a smaller face.
 
 Ask testers to copy this file after reproducing a problem:
 
-`/data/homebrew/PPSA99200/userdata/logs/encore-test.log`
+`/data/homebrew/PPSA98743/userdata/logs/encore-test.log`
 
 If present, include `encore-test.log.1` and `encore-test.log.2` from the same
 folder. Use their existing FTP connection; the files are in writable storage

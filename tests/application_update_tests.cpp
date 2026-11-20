@@ -24,8 +24,8 @@ static bool fetch(const std::string& url,chorus::HttpSink sink,void* user,uint64
 static void wait(ApplicationUpdate& updater){for(unsigned i=0;i<1000;++i){updater.poll();const auto state=updater.state();if(state!=UpdateState::Checking && state!=UpdateState::Downloading && state!=UpdateState::Installing){updater.poll();return;}usleep(1000);}assert(false);}
 int main(){
  const std::string base="https://github.com/MyNameIsAwoo/CHEncore-PS5/releases/download/alpha-v41/";
- const std::vector<std::string> names{"eboot.bin","sce_sys/param.json"},data{"new game",R"({"titleId":"PPSA99200","contentVersion":"01.000.041"})"};
- Json manifest={{"schema",1u},{"title","PPSA99200"},{"version",41u},{"files",Json::array()}};
+ const std::vector<std::string> names{"eboot.bin","sce_sys/param.json"},data{"new game",R"({"titleId":"PPSA98743","contentVersion":"01.000.041"})"};
+ Json manifest={{"schema",1u},{"title","PPSA98743"},{"version",41u},{"files",Json::array()}};
  for(size_t i=0;i<names.size();++i)manifest["files"].push_back({{"path",names[i]},{"size",data[i].size()},{"sha256",hash(data[i])}});
  const auto text=manifest.dump();payload="CHENUP1\n";for(unsigned i=0;i<4;++i)payload+=char(text.size()>>(8*i));payload+=text;for(const auto& bytes:data)payload+=bytes;
  Json release={{"tag_name","alpha-v41"},{"draft",false},{"prerelease",false},{"body","Release notes"},{"assets",Json::array()}};

@@ -11,7 +11,7 @@ python3 tests/asset_importer_paths_tests.py
 bash ps5/tools/test-asset-pack.sh
 bash ps5/tools/test-updates-and-storage.sh
 python3 ps5/tools/package-desktop-builder.py --output dist/CH_Encore_VERSION_desktop-builder.zip
-python3 ps5/tools/build-update-package.py dist/PPSA99200 dist/CH_Encore_VERSION_update.encore
+python3 ps5/tools/build-update-package.py dist/PPSA98743 dist/CH_Encore_VERSION_update.encore
 ```
 
 `package-desktop-builder.py` requires a clean source tree and matching built-source notices. It audits the application and builder, checks the automatic-setup capability and catalog, then creates `base-game.zip` with a complete file-hash manifest. This is the only template to put inside the public builder. An already prepared personal install is rejected by the unchanged public resource audit.

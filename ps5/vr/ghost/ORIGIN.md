@@ -1,0 +1,2 @@
+Unmodified files from the user-provided Ghost-VR-main.zip, `pc/ps5xr/runtime/src` and `core`. Copyright (C) 2026 theghostonline, GPL-3.0-or-later per THIRD_PARTY_NOTICES.md. Upstream: https://theghostonline.dev/theghostonline/Ghost-VR
+The separate CHEncore sources retain their MIT notices; a distributed combined VR build must meet GPL-3.0-or-later and other linked dependency obligations. No Sony libraries or original game assets are included. No PS4 payload, game injection, credential modifications, hand-tracking enablement or streaming stack is needed for this adapter.

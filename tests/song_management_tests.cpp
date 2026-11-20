@@ -19,7 +19,7 @@ int main(){
  assert(fs::exists(central/"Collision (migrated 1)"/"notes.chart"));
  std::string contents;std::ifstream(central/"Collision"/"notes.chart")>>contents;assert(contents=="new");
  auto again=rhythm::persistent::migrateSongs(old.string(),central.string());assert(!again.moved && again.failed==1);
- assert(rhythm::persistent::identity("/data/homebrew/SONGS/Pack/Song/notes.chart")==rhythm::persistent::identity("/data/homebrew/PPSA99200/songs/Pack/Song/notes.chart"));
+ assert(rhythm::persistent::identity("/data/homebrew/SONGS-VR/Pack/Song/notes.chart")==rhythm::persistent::identity("/data/homebrew/PPSA98743/songs/Pack/Song/notes.chart"));
  put(bundles/"Original"/"notes.chart");put(root/"keep"/"notes.chart","untouched");
  fs::create_directory_symlink(root/"keep",central/"escape");
  auto result=rhythm::storage::removeSongs({(central/"Pack"/"Song").string(),(central/"Pack"/"Song").string(),(bundles/"Original").string()},central.string(),bundles.string(),registry.string());

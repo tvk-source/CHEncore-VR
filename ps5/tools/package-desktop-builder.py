@@ -42,7 +42,7 @@ def make_bundle(app, output):
                for p in (app / 'eboot.bin', app / 'sce_module/encore-engine.prx')):
         raise ValueError('The game template does not support personal builder installations.')
     param = json.loads((app / 'sce_sys/param.json').read_text())
-    if param['titleId'] != 'PPSA99200': raise ValueError('Unexpected title ID.')
+    if param['titleId'] != 'PPSA98743': raise ValueError('Unexpected title ID.')
     code = int(param['contentVersion'].split('.')[1]) * 1000 + int(param['contentVersion'].split('.')[2])
     if code < 10503: raise ValueError('Personal templates require v1.5.1 or newer.')
     major, rem = divmod(code, 10000); minor, rem = divmod(rem, 100); patch = rem // 2
@@ -66,9 +66,9 @@ def make_bundle(app, output):
                 if path.is_symlink(): raise ValueError('No symlinks in the public template.')
                 if path.is_file():
                     name = path.relative_to(app).as_posix(); files[name] = sha_file(path)
-                    z.write(path, 'PPSA99200/' + name)
+                    z.write(path, 'PPSA98743/' + name)
             if z.testzip(): raise ValueError('Game template ZIP failed its CRC check.')
-        config = {'schema': 1, 'title_id': 'PPSA99200', 'version': version, 'source': revision,
+        config = {'schema': 1, 'title_id': 'PPSA98743', 'version': version, 'source': revision,
                   'bundled_assets_supported': True, 'catalog': catalog, 'zip_sha256': sha_file(template), 'files': files}
         (bundle / 'template.json').write_text(json.dumps(config, indent=2) + '\n', encoding='utf-8')
         # A second audit catches accidental loose resource additions to the builder.
@@ -84,7 +84,7 @@ def make_bundle(app, output):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--app', type=Path, default=ROOT / 'dist/PPSA99200')
+    parser.add_argument('--app', type=Path, default=ROOT / 'dist/PPSA98743')
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()
     print(json.dumps(make_bundle(args.app, args.output), indent=2))

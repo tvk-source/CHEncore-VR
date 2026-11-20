@@ -71,7 +71,7 @@ def build(bundle, tools, source, output):
               '--specpath',str(work),'--paths',str(payload),'--paths',str(payload/'asset-importer')]
         from PIL import Image
         with zipfile.ZipFile(payload/'base-game.zip') as z:
-            icon=work/'icon.png';icon.write_bytes(z.read('PPSA99200/sce_sys/icon0.png'))
+            icon=work/'icon.png';icon.write_bytes(z.read('PPSA98743/sce_sys/icon0.png'))
         with Image.open(icon) as image:image.save(work/'builder.ico',sizes=[(16,16),(32,32),(48,48),(64,64),(128,128),(256,256)])
         args += ['--icon',str(work/'builder.ico')]
         for package in ['UnityPy','PIL','lz4','texture2ddecoder','etcpak','astc_encoder','archspec','fmod_toolkit','pyfmodex','brotli']:

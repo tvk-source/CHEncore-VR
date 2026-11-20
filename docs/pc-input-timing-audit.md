@@ -203,7 +203,7 @@ hardware or full gameplay parity for the additional instrument engines.
 The final main-menu smoke run also exited with status 0. Its capture was inspected,
 and the compatibility marker kept the raw guitar stream disabled while the
 native pad remained connected. All temporary launch/trace files and the owned
-storage fixture were removed. A subsequent plain launch reported PPSA99200
+storage fixture were removed. A subsequent plain launch reported PPSA98743
 running; the console was left on the normal build, not a bounded QA launch.
 
 Outstanding hands-on checks: controlled bridge stop/restart, direct guitar
@@ -497,7 +497,7 @@ main-menu bounce, profile Start/confirm bounce, held scrolling, keyboard typing,
 remap capture/review bounce, gameplay setting save, and fresh-process reload at
 6 ms. The exact original preference bytes were restored afterwards. Evidence:
 `klog/controller-stage1/menu-filters-verdict.json`. Test backup/restore locates the
-running title's mounted `/download0`; `/user/download/PPSA99200/download0.dat`
+running title's mounted `/download0`; `/user/download/PPSA98743/download0.dat`
 is the backing container, not a directory to edit.
 
 The subsequent label-only revision adopts the PC's exact Double Strum Prevention

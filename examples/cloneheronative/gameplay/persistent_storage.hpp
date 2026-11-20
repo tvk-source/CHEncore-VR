@@ -14,9 +14,9 @@
 // app0 is writable for the development folder, but not for installed packages.
 // This absolute data root is the SAME physical location used by the existing
 // folder build, preserving its songs and profiles while supporting images/PKGs.
-#define CH_DATA_ROOT "/data/homebrew/PPSA99200"
+#define CH_DATA_ROOT "/data/homebrew/PPSA98743"
 #define CH_USERDATA CH_DATA_ROOT "/userdata"
-#define CH_SONGS "/data/homebrew/SONGS"
+#define CH_SONGS "/data/homebrew/SONGS-VR"
 #define CH_LEGACY_SONGS CH_DATA_ROOT "/songs"
 namespace rhythm::persistent {
 inline std::string identity(const std::string& path) {

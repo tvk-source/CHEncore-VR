@@ -40,7 +40,7 @@ Host regression and sanitizer checks cover documented scoring, drum input, profi
 
 Use the repository bug-report form. Include the build, installation format, console/launcher, controller model and mode, instrument, player count and reproduction steps. Attach the diagnostic log and relevant screenshots after reviewing them for personal information.
 
-Logs are stored in `/data/homebrew/PPSA99200/userdata/logs/encore-test.log`, with `.1` and `.2` rotated files when present.
+Logs are stored in `/data/homebrew/PPSA98743/userdata/logs/encore-test.log`, with `.1` and `.2` rotated files when present.
 
 ## Updating and song management
 
