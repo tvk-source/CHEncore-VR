@@ -133,3 +133,31 @@ The 30-second limit and existing wear/tracking stop checks remain. Stop
 immediately on discomfort or double vision. After the test close the idle
 title through the PS menu. V5 is a depth/pose diagnostic, not a world-locked
 scene or a Vulkan renderer. No GhostVR payload independence claim.
+
+## V5 confirmed; V6 offscreen Vulkan bridge
+On 2026-11-20, V5 (ff8224b) delivered 2700/2700 frames in 30.00 seconds
+at 90.0 submissions/s. Errors and queue-full waits zero. The tester confirmed
+all three objects fused, correct depth order and stable head-relative motion.
+Every pose sample reported 59 mm baseline, head-local eye offsets
+(-0.0295,0.001,0.012) and (0.0295,0.001,0.012) m, eye quaternion absdot 1.
+The frame-1 head pose was (-0.0808,-2.1355,-0.0023) m, while frame 450
+was (0.0158,1.1644,-0.0480) m. System tracking stable at 1.09 s.
+Never anchor a world to the first returned pose. Future dynamic rendering
+needs stable pose gating, recentering and buffer ownership verification.
+V6 initializes linked RADV without surface or swapchain before Hmd2, records
+a render pass for each 1024x1024 eye and GPU color clears covering the V5
+pattern. It copies both images to an independent coherent readback buffer
+using vulkan_linear.hpp, waits on a bounded fence and checks all pixels
+against the CPU reference. Only on exact agreement is that image copied
+to the three existing immutable direct-memory buffers before registration.
+This is a GPU render/copy/readback bridge, not a shader-driven scene or a
+zero-copy or per-frame renderer. No buffer rewriting after registration,
+no move to 120 Hz, no world-lock or credentials changes. GPU resources
+are separate from display buffers; stop after headset teardown. A failed
+fence leaves GPU resources allocated until title closure. No CPU fallback
+so a green submission result cannot disguise a failed Vulkan test.
+V6 uses the same shapes, optical geometry and 30-second wear-gated test.
+If GPU validation fails, capture the error and close the title. No output
+should be registered. VO_BUSY at unregister remains unresolved.
+Host tests check the raster coverage plus native init order in mocks;
+native build and physical GPU execution remain to be verified.

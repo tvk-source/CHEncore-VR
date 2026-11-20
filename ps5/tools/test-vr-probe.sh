@@ -4,7 +4,7 @@ root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 cd "$root"
-for test in encore_vr_core_tests encore_ghost_runtime_tests encore_native_probe_tests; do
+for test in encore_vr_core_tests encore_ghost_runtime_tests encore_native_probe_tests encore_probe_raster_tests; do
     "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -pedantic "tests/$test.cpp" -o "$tmp/$test"
     "$tmp/$test"
 done

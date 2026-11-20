@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "native_probe.hpp"
 #include "probe_stereo.h"
+#include "probe_vulkan.h"
 #include "ghost/psvr2.h"
 #include "../src/platform.h"
 #include <cstdint>
@@ -24,7 +25,7 @@ int finish(int status) {
 }
 }
 int encore_vr_native_probe() {
-    say("VR_PROBE begin: PPSA98743, native headset, no Vulkan or game assets");
+    say("VR_PROBE begin: PPSA98743, native headset, offscreen Vulkan raster, no game assets");
     ProbeSoftwareVersion version{};
     version.size = sizeof(version);
     const int rc = sceKernelGetProsperoSystemSwVersion(&version);
@@ -38,12 +39,18 @@ int encore_vr_native_probe() {
         say("VR_PROBE stopped: only firmware 7.61 is enabled");
         return finish(2);
     }
+    // RADV must initialize AGC before headset reprojection, as in hosted GhostVR.
+    if (encore_probe_gpu_init() != 0) {
+        encore_probe_gpu_stop();
+        return finish(5);
+    }
     // Isolate Hmd2 output from TV mirroring and DualSense ownership.
     psvr2_set_dualsense(0);
     psvr2_set_mirror(0);
     if (psvr2_init_output() != 0) {
         say("VR_PROBE initialization failed");
         psvr2_shutdown();
+        encore_probe_gpu_stop();
         return finish(3);
     }
     psvr2_info info{};
@@ -56,11 +63,12 @@ int encore_vr_native_probe() {
     int submitted = -1;
     if (info.status == 0 && info.panel_w && info.panel_h && validFov &&
         std::isfinite(info.ipd) && info.ipd > 0.0f && psvr2_worn())
-        submitted = psvr2_selftest("encore-native-761-v5", Frames);
+        submitted = psvr2_selftest("encore-native-761-v6", Frames);
     else
         say("VR_PROBE skipped: headset not ready, not worn, or invalid optical data");
     say("VR_PROBE submissions=%d requested=%d", submitted, Frames);
     psvr2_shutdown();
     say("VR_PROBE shutdown returned; inspect teardown codes above");
+    encore_probe_gpu_stop();
     return finish(submitted == Frames ? 0 : 4);
 }

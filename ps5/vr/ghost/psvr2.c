@@ -14,6 +14,7 @@
 #include "psvr2.h"
 #include "xr_log.h"
 #include "../probe_stereo.h"
+#include "../probe_vulkan.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -2412,8 +2413,8 @@ void psvr2_shutdown(void)
 }
 
 /* -- self test ---------------------------------------------------------------- */
-/* Native bounded diagnostic: projected low-brightness reference plane.
- * No Vulkan or changing credentials. Returns number of successful submissions. */
+/* Native bounded diagnostic: Vulkan-generated immutable stereo reference.
+ * No game assets or changing credentials. Returns number of successful submissions. */
 int psvr2_selftest(const char *tag, int frames)
 {
     enum { EYE = 1024, NBUF = 3 };
@@ -2439,15 +2440,11 @@ int psvr2_selftest(const char *tag, int frames)
             buf[b] = direct_alloc((size_t)2 * EYE * EYE * 4, 0x10000);
         if (!buf[b])
             return -1;
-        uint32_t *p = buf[b];
-        // Both eyes see the same three-depth reference scene. All buffers are immutable.
-        for (unsigned y = 0; y < EYE; ++y)
-            for (unsigned x = 0; x < 2 * EYE; ++x) {
-                const unsigned e = x/EYE;
-                const float u = ((float)(x%EYE)+.5f)/EYE;
-                const float v = ((float)y+.5f)/EYE;
-                p[(size_t)y*2*EYE+x] = encore_probe_scene_pixel(&optical[e],u,v);
-            }
+    }
+    // Render before registration; never write these buffers while Hmd2 can read them.
+    if (encore_probe_gpu_render(optical,EYE,buf,NBUF)!=0) {
+        XRLOG("VR_PROBE GPU validation failed; no headset output registered");
+        return -1;
     }
     XRLOG("VR_PROBE scene: square left 1m, cross/ring center 2m, diamond right 4m; head-relative");
     const uint64_t qf0 = H.stats.queue_full, err0 = H.stats.errors, fr0 = H.stats.frames;
