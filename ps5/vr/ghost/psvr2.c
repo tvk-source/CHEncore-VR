@@ -15,6 +15,7 @@
 #include "xr_log.h"
 #include "../probe_stereo.h"
 #include "../probe_vulkan.h"
+#include "../probe_timing.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -1953,6 +1954,7 @@ static int apply_mode(int mode)
  * title that sent its first frames 1 ms after EnableVrMode). Wait until the
  * VR port counts vblanks, at most 5 s. */
 int sceVideoOutGetVblankStatus(int handle, void *status);
+int sceVideoOutGetFlipStatus(int handle, void *status);
 static int wait_display_live(void)
 {
     uint64_t st[32] = {0};
@@ -2456,6 +2458,9 @@ int psvr2_selftest(const char *tag, int frames)
     const float tr[4] = {H.fov[1], H.fov[0], H.fov[2], H.fov[3]};
     const uint64_t t0 = psvr2_now_us();
     int ok = 0;
+    encore_origin_gate gate={0};
+    encore_flip_observation flips={0};
+    uint64_t gpu_total=0,gpu_max=0,gpu_count=0,gpu_over=0;
     // Give the tracker up to 3 seconds to settle before beginning any frame.
     psvr2_pose dev = {{0, 0, 0}, {0, 0, 0, 1}}, eyes[2];
     float lv[3], av[3];
@@ -2478,6 +2483,44 @@ int psvr2_selftest(const char *tag, int frames)
         if (!psvr2_head(disp, &dev, eyes, lv, av)) {
             psvr2_repeat_frame((uint64_t)i);
             XRLOG("selftest %s: tracking lost at %d", tag, i);
+            break;
+        }
+        // After the initial three seconds, exercise the actual GPU on each
+        // frame, in resources entirely separate from the headset buffers.
+        const uint64_t elapsed=psvr2_now_us()-t0;
+        if(encore_origin_sample(&gate,elapsed,dev.pos,dev.quat)) {
+            XRLOG("VR_PROBE origin candidate frame=%d elapsed_us=%lu pos=(%.4f %.4f %.4f) quat=(%.5f %.5f %.5f %.5f)",
+                  i,(unsigned long)elapsed,(double)dev.pos[0],(double)dev.pos[1],(double)dev.pos[2],
+                  (double)dev.quat[0],(double)dev.quat[1],(double)dev.quat[2],(double)dev.quat[3]);
+        }
+        if(i>1){
+            // The pinned PS5_Vulkan TV WSI uses word 3 as the shown flip
+            // argument. Verify its behavior on this VR port, read-only.
+            uint64_t status[32]={0};
+            int rc=sceVideoOutGetFlipStatus(H.vh,status);
+            int valid=encore_flip_sample(&flips,rc,status[3],(uint64_t)(i-1));
+            if(i<=12||i%450==0||i==frames)
+                XRLOG("VR_PROBE flip frame=%d rc=0x%08x shown_word3=%lu last_submitted=%d valid=%d raw0=%lu raw1=%lu raw2=%lu",
+                      i,rc,(unsigned long)status[3],i-1,valid,(unsigned long)status[0],
+                      (unsigned long)status[1],(unsigned long)status[2]);
+        }
+        if(elapsed>=3000000u){
+            const uint64_t gpu_start=psvr2_now_us();
+            if(encore_probe_gpu_replay()!=0){
+                psvr2_repeat_frame((uint64_t)i);
+                XRLOG("VR_PROBE GPU replay failed at %d",i);
+                break;
+            }
+            const uint64_t cost=psvr2_now_us()-gpu_start;
+            gpu_total+=cost;++gpu_count;
+            if(cost>gpu_max)gpu_max=cost;
+            if(cost>11111u)++gpu_over;
+            if(i%450==0||i==frames)
+                XRLOG("VR_PROBE GPU replay count=%lu mean_us=%.1f max_us=%lu over_11ms=%lu (submit+fence+sample wall time)",
+                      (unsigned long)gpu_count,(double)gpu_total/(double)gpu_count,(unsigned long)gpu_max,(unsigned long)gpu_over);
+        }
+        if (!psvr2_worn() || psvr2_exit_requested() || psvr2_now_us()-t0>=ENCORE_PROBE_DEADLINE_US) {
+            psvr2_repeat_frame((uint64_t)i);
             break;
         }
         if (psvr2_submit((i-1) % NBUF, (uint64_t)i, disp, &dev, tl, tr) != 0) {
@@ -2512,6 +2555,9 @@ int psvr2_selftest(const char *tag, int frames)
           frames, secs, secs > 0 ? ok / secs : 0.0, (unsigned long)(H.stats.queue_full - qf0),
           (unsigned long)(H.stats.errors - err0), psvr2_worn());
     (void)fr0;
+    XRLOG("VR_PROBE V7 summary origin_candidate=%d replay_count=%lu replay_over_11ms=%lu flip_valid=%lu flip_invalid=%lu flip_regressed=%lu flip_max_lag=%lu",
+          gate.anchored,(unsigned long)gpu_count,(unsigned long)gpu_over,(unsigned long)flips.valid,
+          (unsigned long)flips.invalid,(unsigned long)flips.regressed,(unsigned long)flips.max_lag);
     psvr2_output_stop();
     return ok;
 }

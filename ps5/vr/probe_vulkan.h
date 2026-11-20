@@ -13,6 +13,8 @@ int encore_probe_gpu_render(const encore_probe_eye eyes[2], unsigned size,
 /* Only after headset shutdown. If a GPU fence did not complete, retain until
  * the title is closed; never destroy resources possibly still in use. */
 void encore_probe_gpu_stop(void);
+/* Replay private offscreen work. No registered memory is written. */
+int encore_probe_gpu_replay(void);
 #ifdef __cplusplus
 }
 #endif

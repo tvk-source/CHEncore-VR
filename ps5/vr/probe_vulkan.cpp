@@ -31,7 +31,9 @@ struct State {
     VkCommandBuffer cb{};
     VkFence fence{};
     void* mapped{};
-    bool pending{};
+    bool pending{}, verified{};
+    size_t sampleIndex[6]{};
+    uint32_t sampleValue[6]{};
 } g;
 bool check(VkResult r,const char* name) {
     if(r==VK_SUCCESS)return true;
@@ -171,8 +173,17 @@ extern "C" int encore_probe_gpu_render(const encore_probe_eye eyes[2],unsigned s
     VkFenceCreateInfo fi{};fi.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
     GPU_CHECK(vkCreateFence(g.device,&fi,nullptr,&g.fence));
     VkCommandBufferBeginInfo begin{};
-    begin.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    begin.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;begin.flags=0; // reused serially after a completed fence
     GPU_CHECK(vkBeginCommandBuffer(g.cb,&begin));
+    // Poison the private readback before each replay: detect missing writes
+    // at sampled locations without any in-flight display-buffer access.
+    vkCmdFillBuffer(g.cb,g.readback,0,bytes,UINT32_C(0xdeadbeef));
+    VkBufferMemoryBarrier poison{};
+    poison.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+    poison.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;poison.dstAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;
+    poison.srcQueueFamilyIndex=poison.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;
+    poison.buffer=g.readback;poison.size=VK_WHOLE_SIZE;
+    vkCmdPipelineBarrier(g.cb,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_TRANSFER_BIT,0,0,nullptr,1,&poison,0,nullptr);
     for(int s=0;s<2;++s) {
         auto runs=encore::vr::probeRuns(eyes[s],size);
         if(runs.empty()||runs.size()>size_t(size)*size)return -1;
@@ -217,8 +228,46 @@ extern "C" int encore_probe_gpu_render(const encore_probe_eye eyes[2],unsigned s
     }
     say("VR_PROBE GPU readback pixels=%u mismatches=%u litL=%u litR=%u",unsigned(bytes/4),unsigned(bad),unsigned(lit[0]),unsigned(lit[1]));
     if(bad||!lit[0]||!lit[1])return -1;
+    // Choose two lit samples and one background sample per eye from the
+    // fully verified frame. Replays must overwrite all six poison values.
+    for(unsigned s=0;s<2;++s){
+        unsigned found=0;
+        for(unsigned y=0;y<size && found<2;++y)for(unsigned x=0;x<size&&found<2;++x){
+            size_t idx=size_t(y)*2*size+s*size+x;
+            if(pixels[idx]==UINT32_C(0xff808080)){
+                g.sampleIndex[3*s+found]=idx;g.sampleValue[3*s+found]=pixels[idx];++found;
+            }
+        }
+        if(found!=2)return -1;
+        bool background=false;
+        for(unsigned y=0;y<size&&!background;++y)for(unsigned x=0;x<size&&!background;++x){
+            const size_t idx=size_t(y)*2*size+s*size+x;
+            if(pixels[idx]==UINT32_C(0xff202020)){
+                g.sampleIndex[3*s+2]=idx;g.sampleValue[3*s+2]=pixels[idx];background=true;
+            }
+        }
+        if(!background)return -1;
+    }
+    g.verified=true;
     for(int i=0;i<count;++i)std::memcpy(buffers[i],g.mapped,size_t(bytes));
     say("VR_PROBE GPU raster/copy/fence/readback PASS; immutable headset buffers ready");
+    return 0;
+}
+extern "C" int encore_probe_gpu_replay(void) {
+    if(!g.verified||g.pending)return -1;
+    GPU_CHECK(vkResetFences(g.device,1,&g.fence));
+    VkSubmitInfo submit{};
+    submit.sType=VK_STRUCTURE_TYPE_SUBMIT_INFO;submit.commandBufferCount=1;submit.pCommandBuffers=&g.cb;
+    g.pending=true;
+    if(!check(vkQueueSubmit(g.queue,1,&submit,g.fence),"replay vkQueueSubmit"))return -1;
+    // A long frame is a failed experiment, not a reason to wait indefinitely.
+    if(!check(vkWaitForFences(g.device,1,&g.fence,VK_TRUE,100000000ull),"replay vkWaitForFences"))return -1;
+    g.pending=false;
+    const auto* pixels=static_cast<const uint32_t*>(g.mapped);
+    for(unsigned i=0;i<6;++i)if(pixels[g.sampleIndex[i]]!=g.sampleValue[i]){
+        say("VR_PROBE GPU replay readback mismatch sample=%u",i);
+        return -1;
+    }
     return 0;
 }
 extern "C" void encore_probe_gpu_stop(void) {

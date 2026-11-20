@@ -161,3 +161,27 @@ If GPU validation fails, capture the error and close the title. No output
 should be registered. VO_BUSY at unregister remains unresolved.
 Host tests check the raster coverage plus native init order in mocks;
 native build and physical GPU execution remain to be verified.
+
+## V6 hardware pass and V7 concurrent GPU/flip telemetry (2026-11-20)
+V6 f3107f9 selected native PlayStation 5 GPU (RADV NAVI21), graphics family 0.
+698 raster runs per eye and 2097152 readback pixels, zero mismatches,
+7156/7076 lit pixels. 2700/2700 headset frames in 30.01 seconds, 90 FPS,
+queue-full waits and errors zero. GPU shutdown complete. V6 log alone
+does not establish a new visual observation. PCI UUID warning nonfatal.
+Startup pose jumped again; system tracking stable at 1.246 seconds.
+V7 replays the verified offscreen command buffer serially each frame
+after three seconds, poisoning private readback before raster/copy and
+checking six predetermined samples after a bounded 100ms fence. This measures
+ongoing GPU work alongside Hmd2; no registered display buffer is rewritten,
+and the visual reference remains unchanged. Timing is CPU wall time around
+submit/fence/sample, not a GPU timestamp. No implication of sustained
+shader-based gameplay or zero-copy. A failed replay stops the diagnostic;
+unconfirmed GPU resources survive until title closure.
+V7 records read-only sceVideoOutGetFlipStatus samples, interpreting word
+3 tentatively as shown flip marker based on pinned PS5_Vulkan
+driver/ps5vk_private.h and driver/ps5vk_wsi.c (7f492b4c). This is not proof
+of VR compositor retirement. No reuse decision depends on it. The origin
+candidate waits >=3s and 45 consecutive low-delta valid pose samples;
+this is a heuristic, not a runtime SLAM-quality flag; no world anchoring
+yet. Look forward and stay still during the first four seconds. The image
+should remain as V6. VO_BUSY and manual closure remain unchanged.
