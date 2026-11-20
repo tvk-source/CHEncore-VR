@@ -316,3 +316,9 @@ headphone audibility, physical A/V sync or visual comfort/world lock.
 Haptic resolution 0x80020003 and unregister 0x80290009 remain unresolved.
 GPU shutdown complete and SUBMISSIONS_PASS. No new hardware run needed
 for the host-only cinema groundwork.
+
+### V12 sensory validation
+Tester subsequently confirmed audible metronome in the headset, moving
+notes, and visually stable targets. This closes the V12 sensory check;
+no repeat console test is needed. It does not measure audio latency or
+prove compositor release semantics. Retain V12 as a rollback build.

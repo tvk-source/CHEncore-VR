@@ -42,3 +42,31 @@ locally supplied song in cinema mode. Full immersive geometry can then
 reuse game state from a single simulation step. The host geometry helper
 alone is not a playable cinema build, and no native implementation or
 console validation is claimed here.
+
+## V12 visual/audio validation and source-copy preparation
+
+Tester confirmed audible audio, moving notes and stable targets. Do not
+repeat V12. Audio latency and exact world-lock accuracy are unmeasured.
+
+The existing `VulkanExampleBase::submitFrame` renders once, then optionally
+captures before queue presentation. `ps5CaptureSwapchainImage` already
+copies the acquired game color image, but waits the whole queue idle and
+converts it on the CPU for screenshots. Do not use that slow screenshot
+routine as a per-frame cinema path. Instead, the new
+`ps5/vr/cinema_source.hpp` records a same-size/same-format image copy
+and transitions the independent destination texture for fragment sampling.
+It takes explicit layouts, requires prior source completion and destination
+retirement, restores source layout and never touches headset slots.
+`ps5/vr/shaders/cinema.vert` and `cinema.frag` consume the homogeneous
+clip vertices from cinema_geometry.hpp and sample that same game texture
+for each eye. Preserve clip w, use positive-height Vulkan viewport and
+matching color formats/color-space handling; no extra vertical flip.
+
+These are reusable source-copy and shader building blocks, not a wired
+renderer. No Vulkan compilation, shader compilation, native build, or
+GPU execution has been performed for them. The next integration must
+own texture allocation, descriptors, pipeline/render pass, command/fence
+lifetime, and explicit image usage validation before calling the helper.
+A headless game render target is still preferable for the production VR
+path; a capture hook on the existing renderer is useful for host proof.
+Keep normal TV presentation unchanged. No hardware build requested yet.
