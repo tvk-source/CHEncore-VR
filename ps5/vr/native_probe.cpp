@@ -3,10 +3,15 @@
 #include "ghost/psvr2.h"
 #include "../src/platform.h"
 #include <cstdint>
+#include <cstddef>
 #include <cstdio>
 #include <cmath>
 
-struct ProbeSoftwareVersion { uint64_t size; char text[0x1c]; uint32_t version; };
+// PS5-specific version query, not the PS4 compatibility version.
+// Match the layout used by etaHEN's native firmware detection.
+struct ProbeSoftwareVersion { uint64_t size; char text[0x1c]; uint32_t version; uint64_t reserved; };
+static_assert(offsetof(ProbeSoftwareVersion, version) == 0x24);
+extern "C" int sceKernelGetProsperoSystemSwVersion(ProbeSoftwareVersion*);
 extern "C" int sceKernelGetSystemSwVersion(ProbeSoftwareVersion*);
 extern "C" int sceSystemServiceLoadExec(const char*, const char* const*);
 namespace {
@@ -23,9 +28,13 @@ int encore_vr_native_probe() {
     say("VR_PROBE begin: PPSA98743, native headset, no Vulkan or game assets");
     ProbeSoftwareVersion version{};
     version.size = sizeof(version);
-    const int rc = sceKernelGetSystemSwVersion(&version);
+    const int rc = sceKernelGetProsperoSystemSwVersion(&version);
     const unsigned fw = version.version >> 16;
-    say("VR_PROBE firmware rc=0x%08x version=0x%04x", unsigned(rc), fw);
+    ProbeSoftwareVersion compat{};
+    compat.size = sizeof(compat);
+    const int compatRc = sceKernelGetSystemSwVersion(&compat);
+    say("VR_PROBE PS5 firmware rc=0x%08x raw=0x%08x version=0x%04x", unsigned(rc), unsigned(version.version), fw);
+    say("VR_PROBE PS4 compatibility rc=0x%08x raw=0x%08x", unsigned(compatRc), unsigned(compat.version));
     if (rc != 0 || fw != 0x0761u) {
         say("VR_PROBE stopped: only firmware 7.61 is enabled");
         return finish(2);

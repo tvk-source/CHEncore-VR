@@ -67,3 +67,14 @@ an eboot.bin (28,491,401 bytes) and engine PRX. Final asset staging failed
 because it used build/ps5 instead of build/ps5-vr-probe. The build-directory
 fix addresses that packaging failure; rerun the build to verify. No PS5
 hardware result has yet been reported.
+
+## First console launch, 2026-11-20
+Both launches reached main and klog output, then returned code 2 because
+sceKernelGetSystemSwVersion reported 0x1079. PS5 7.61 has a PS4 compatibility
+version of 10.790.001, as documented at https://www.psdevwiki.com/ps5/Build_Strings .
+The probe now queries sceKernelGetProsperoSystemSwVersion for the strict 7.61
+check, following etaHEN's native version query, and logs both raw values.
+The compatibility value is diagnostic only and cannot authorize headset access.
+The mock test reproduces the 0x1079 compatibility result and checks that 7.60
+and 13.60 PS5 versions remain rejected. The corrected native build and headset
+initialization still need console verification.
