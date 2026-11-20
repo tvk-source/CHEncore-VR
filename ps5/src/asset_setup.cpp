@@ -9,6 +9,8 @@
 #include <atomic>
 #include <array>
 #include <algorithm>
+#include <cstdlib>
+#include <cstdio>
 #include <pthread.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -109,14 +111,45 @@ public:
 };
 }
 bool ps5_prepare_pc_assets(uint32_t frameBudget,const std::string& screenshot) {
- (void)rhythm::persistent::prepare();
 #if defined(PS5_HOST_REFERENCE)
  const std::string work=std::string(PS5_APP_ROOT)+"/userdata/pc-assets";
 #else
+ (void)rhythm::persistent::prepare();
  const std::string work=CH_USERDATA "/pc-assets";
 #endif
  std::string root,error;
- if(rhythm::assets::installed(work,root,error)){rhythm::assets::setCurrentRoot(root);return true;}
+ if(rhythm::assets::installed(work,root,error)){
+  rhythm::assets::setCurrentRoot(root);
+#if defined(PS5_HOST_REFERENCE)
+  if(std::getenv("ENCORE_CINEMA_SHADER_DIR"))std::fprintf(stderr,"CINEMA_ASSETS PASS installed host pack\n");
+#endif
+  return true;
+ }
+#if defined(PS5_HOST_REFERENCE)
+ // For automated cinema validation, import the user's own pack directly
+ // with the existing verified importer. Do not render the setup screen
+ // or incorrectly report a successful original-game reference.
+ if(std::getenv("ENCORE_CINEMA_SHADER_DIR")){
+  std::string package;
+  if(const char* explicitPack=std::getenv("ENCORE_ASSET_PACK");explicitPack && *explicitPack)
+   package=explicitPack;
+  else for(const auto& candidate:{std::string(PS5_APP_ROOT "/EncoreAssets-v1.encore-assets"),
+          std::string(PS5_APP_ROOT "/assets/EncoreAssets-v1.encore-assets")}){
+   struct stat st{};if(!stat(candidate.c_str(),&st)&&S_ISREG(st.st_mode)){package=candidate;break;}
+  }
+  if(package.empty()){
+   std::fprintf(stderr,"CINEMA_ASSETS FAIL: set ENCORE_ASSET_PACK to your authorized EncoreAssets-v1.encore-assets file\n");
+   return false;
+  }
+  std::fprintf(stderr,"CINEMA_ASSETS importing %s\n",package.c_str());
+  if(!rhythm::assets::install(package,work,root,error)){
+   std::fprintf(stderr,"CINEMA_ASSETS FAIL: %s\n",error.c_str());return false;
+  }
+  rhythm::assets::setCurrentRoot(root);
+  std::fprintf(stderr,"CINEMA_ASSETS PASS imported host pack\n");
+  return true;
+ }
+#endif
  AssetSetup setup(work);setup.message=error;setup.ps5.frameBudget=frameBudget;setup.ps5.screenshotPath=screenshot;
  if(!setup.initVulkan())return false;setup.prepare();setup.renderLoop();
  if(setup.vulkanDevice)vkDeviceWaitIdle(setup.vulkanDevice->logicalDevice);

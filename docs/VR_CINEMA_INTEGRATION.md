@@ -118,3 +118,24 @@ Note that the original game requires the user's own EncoreAssets-v1.encore-asset
 pack, or an already installed host PC asset root. The distributed probe
 assets do not necessarily contain it. A setup screen is not the actual
 CHEncore menu/gameplay reference.
+
+## First successful host GPU composition (2026-11-20)
+User's Linux reference run at 5c784a5 built and linked, selected
+cloneheronative, captured a 3840x2160 original frame and produced
+2048x1024 stereo output (73424 non-background pixels per eye). Both
+images were inspected: the source was the PC asset import UI, and both
+eye images showed the same upright UI correctly. This verifies actual
+Vulkan composition, not the full game menu, live world lock, or native
+cinema performance. V12 remains the playable practice baseline.
+The new automated reference path uses existing validated asset pack import
+when ENCORE_ASSET_PACK points to a personal pack, or finds one in the host
+app directory/assets. Existing installed packs are reused. Missing/invalid
+assets fail before rendering instead of passing on the setup UI. No native
+asset behavior change. Host import goes into build/ps5-host/app/userdata/pc-assets
+and skips native persistent storage migration in asset setup. The pack is
+not committed or redistributed. To run with an authorized pack:
+
+    ENCORE_ASSET_PACK="$HOME/Downloads/EncoreAssets-v1.encore-assets" bash ps5/tools/cinema-reference.sh
+
+The host reference fix is untested. Native cinema compositor integration,
+real menu input, and full song play remain outstanding.

@@ -38,6 +38,7 @@ namespace encore_startup { inline void checkpoint(const char*) {} inline void fi
 #include <chrono>
 #include <cstring>
 #include <cstdarg>
+#include <cstdlib>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -170,7 +171,12 @@ Result runSample(const Ps5Sample &sample, uint32_t frameBudget, const std::strin
 	const double start = now();
 	try {
 		encore_startup::checkpoint("before game object construction");
-		if(strcmp(sample.id,"cloneheronative")==0 && !ps5_prepare_pc_assets(frameBudget,screenshotPath)){result.ok=true;return result;}
+		if(strcmp(sample.id,"cloneheronative")==0 && !ps5_prepare_pc_assets(frameBudget,screenshotPath)){
+#if defined(PS5_HOST_REFERENCE)
+            if(std::getenv("ENCORE_CINEMA_SHADER_DIR"))throw std::runtime_error("Cinema reference requires installed PC assets");
+#endif
+            result.ok=true;return result;
+        }
 		example = sample.create();
 		encore_startup::checkpoint("game object constructed");
 		// A test run is deterministic: upstream's samples seed their random

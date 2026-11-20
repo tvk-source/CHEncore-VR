@@ -86,7 +86,9 @@ fi
 mapfile -t samples <<< "$resolved"
 echo "Host samples: ${samples[*]}"
 if [[ -n ${ENCORE_CINEMA_SHADER_DIR:-} ]]; then
-    for sample in "${samples[@]}"; do rm -f "$build/app/screenshots/$sample.ppm.cinema.ppm"; done
+    for sample in "${samples[@]}"; do
+        rm -f "$build/app/screenshots/$sample.ppm" "$build/app/screenshots/$sample.ppm.cinema.ppm"
+    done
 fi
 printf 'frames %s\nscreenshot\nsamples %s\n' "${FRAMES:-300}" "${samples[*]}" > "$build/app/test-run.txt"
 out="$root/klog/host-$(date +%Y%m%d-%H%M%S)"
@@ -97,6 +99,7 @@ status=0
 if ! "$build/ps5-samples-host" 2>&1 | tee "$out/log.txt"; then status=1; fi
 grep -q "ends: status 0" "$out/log.txt" || status=1
 if [[ -n ${ENCORE_CINEMA_SHADER_DIR:-} ]]; then
+    grep -q "CINEMA_ASSETS PASS" "$out/log.txt" || status=1
     grep -q "CINEMA_REFERENCE PASS" "$out/log.txt" || status=1
     if grep -q "CINEMA_REFERENCE FAIL" "$out/log.txt"; then status=1; fi
 fi
