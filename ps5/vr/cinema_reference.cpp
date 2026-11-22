@@ -19,7 +19,15 @@
 #endif
 
 namespace {
+#if defined(ENCORE_VR_CINEMA)
+#ifndef ENCORE_CINEMA_EYE_PIXELS
+#define ENCORE_CINEMA_EYE_PIXELS 1440
+#endif
+constexpr uint32_t eyeSize=ENCORE_CINEMA_EYE_PIXELS;
+static_assert(eyeSize==1024||eyeSize==1440,"only tested/bounded output sizes");
+#else
 constexpr uint32_t eyeSize=1024;
+#endif
 constexpr uint32_t width=2*eyeSize,height=eyeSize;
 constexpr VkDeviceSize bytes=VkDeviceSize(width)*height*4;
 struct Image {VkImage image{};VkDeviceMemory memory{};VkImageView view{};};
@@ -131,7 +139,15 @@ struct CinemaRenderer {
         r.buffer(r.vertices,sizeof(CinemaVertex)*12,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
         r.buffer(r.readback,bytes,VK_BUFFER_USAGE_TRANSFER_DST_BIT);
         VkSamplerCreateInfo si{};si.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        si.minFilter=si.magFilter=VK_FILTER_NEAREST;si.mipmapMode=VK_SAMPLER_MIPMAP_MODE_NEAREST;
+        // Linear filtering removes the blocky nearest-neighbour source sampling;
+        // higher native eye resolution preserves substantially more fine text.
+#if defined(ENCORE_VR_CINEMA)
+        si.minFilter=si.magFilter=(src.optimalTilingFeatures&VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)?
+            VK_FILTER_LINEAR:VK_FILTER_NEAREST;
+#else
+        si.minFilter=si.magFilter=VK_FILTER_NEAREST;
+#endif
+        si.mipmapMode=VK_SAMPLER_MIPMAP_MODE_NEAREST;
         si.addressModeU=si.addressModeV=si.addressModeW=VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
         CHECK(vkCreateSampler(device,&si,nullptr,&r.sampler));
         VkDescriptorSetLayoutBinding binding{0,VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1,VK_SHADER_STAGE_FRAGMENT_BIT,nullptr};
@@ -353,7 +369,8 @@ bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue q
             }
             if(!native.screen)throw std::runtime_error("tracking origin did not settle");
             native.start=psvr2_now_us();native.initialized=true;
-            say("VR_CINEMA ready 1080p game / 1024x1024 per eye, 60 FPS / 120 Hz output; DualSense or guitar/drums, hold Sense menu to recenter");
+            say("VR_CINEMA ready 1080p game / %ux%u per eye, 60 FPS / 120 Hz output; DualSense or Sense; hold right Options or both Sense grips >=1s to recenter",
+                eyeSize,eyeSize);
         }
         if(!psvr2_worn()||psvr2_exit_requested()||psvr2_now_us()-native.start>=300000000ull)
             throw std::runtime_error("wear/exit/5-minute alpha limit");
@@ -371,7 +388,8 @@ bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue q
         psvr2_poll();
         if(psvr2_take_recenter()){
             auto screen=cinemaScreen(convert(head),3.6f,float(extent.width)/extent.height,2.f);
-            if(screen)native.screen=screen;
+            if(screen){native.screen=screen;say("VR_CINEMA recentered screen pos=(%.2f %.2f %.2f)",
+                 (double)screen->pose.pos.x,(double)screen->pose.pos.y,(double)screen->pose.pos.z);}
         }
         const auto& f=native.optics.fov;
         Eye eyes[2]={{convert(poses[0]),{f[0],f[1],f[2],f[3]}},

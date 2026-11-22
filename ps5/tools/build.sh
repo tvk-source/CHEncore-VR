@@ -43,7 +43,7 @@ if [[ ! -f $build/build.ninja ]] || [[ $probe == ON || $cinema == ON ]]; then
     mkdir -p "$build"
     cmake -S "$ps5" -B "$build" -G Ninja -DCMAKE_MAKE_PROGRAM="$ninja" \
         -DCMAKE_TOOLCHAIN_FILE="$sdk/toolchain/prospero.cmake" \
-        -DENCORE_VR_CINEMA="$cinema" -DENCORE_VR_PROBE="$probe" -DPS5_VULKAN_DIR="$vulkan" -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=OFF > "$build.configure.log" 2>&1 \
+        -DENCORE_CINEMA_EYE_PIXELS="${ENCORE_CINEMA_EYE_PIXELS:-1440}" -DENCORE_VR_CINEMA="$cinema" -DENCORE_VR_PROBE="$probe" -DPS5_VULKAN_DIR="$vulkan" -DCMAKE_BUILD_TYPE=Release -DCMAKE_VERBOSE_MAKEFILE=OFF > "$build.configure.log" 2>&1 \
         || { cat "$build.configure.log" >&2; exit 1; }
 fi
 "$ninja" -C "$build" -j "${PS5_BUILD_JOBS:-2}" title

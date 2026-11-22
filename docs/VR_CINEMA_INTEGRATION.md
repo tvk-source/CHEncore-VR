@@ -163,3 +163,26 @@ executable, module, metadata, shaders and private asset pack. The first
 console session is limited to 5 minutes; use seated play and stop on visual
 instability. Due to shared title ID, back up the existing native folder and
 preserve userdata/songs before deployment; never target the Linux PS5.
+
+## Alpha 2: visual clarity and Sense controller bridge
+Hardware Alpha 1 confirmed authentic game menu, song selection, gameplay,
+original 48 kHz audio and score, with 60 submits/s at 120 Hz; compositor
+telemetry averaged 3.7–3.8 ms, qfull=0, errors=0. Sense left/right connected
+in logs, but input was not routed to the game. User also reported pixelated
+text and no observed recenter. Alpha 2 adds a read-only Sense snapshot and a
+pure gamepad bridge into the original player-0 sample, and a Sense-only virtual
+pad if no DualSense is connected. Physical guitars/drums are never overwritten.
+The right Sense X/O/A/B (Cross/Circle), left square/triangle, sticks,
+grips and analog triggers map to the normal gamepad input; left stick high
+deflection also maps D-pad for menus. Right Options tap sends Options,
+left Create tap sends TouchPad; a hold (>=1s) of either actual menu button,
+or both grips simultaneously, recenters and logs VR_CINEMA recentered.
+
+Native compositor defaults to 1440x1440 per eye (2880x1440 SBS) and linear
+sampling if supported by the source texture. The host reference remains
+1024/eye. To compare or recover, build with ENCORE_CINEMA_EYE_PIXELS=1024.
+This does not change headset firmware, the original 1920x1080 game source,
+or the experimental V12 4-slot age gate. Increased output size is unverified
+on hardware; do not continue after registration failure or visual instability.
+The normal and V12 probe builds are unaffected. Test includes portable C
+assertions for pure input mapping.

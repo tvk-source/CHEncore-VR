@@ -9,6 +9,9 @@
  * smoke test runs with; no SDK header declares them.
  */
 #include "platform.h"
+#if defined(ENCORE_VR_CINEMA)
+#include "../vr/cinema_pad_bridge.h"
+#endif
 
 #include <ps5platform/klog.h>
 
@@ -180,6 +183,45 @@ struct pad_player_state {
 static struct pad_player_state pad_states[PAD_PLAYERS];
 static bool pad_service;
 static double pad_next_scan;
+#if defined(ENCORE_VR_CINEMA)
+static struct pad_player_state *pad_state(int player);
+static int cinema_virtual;
+static struct pad_reading cinema_virtual_sample;
+static int cinema_last_logged=-1;
+static void cinema_bridge_input(void){
+    psvr2_cinema_input in={0};
+    const int available=psvr2_cinema_input_snapshot(&in);
+    cinema_virtual=0;
+    if(available!=cinema_last_logged){
+        if(available)say("VR_CINEMA Sense input bridge active (short right Options=menu, short left Create=touchpad, hold Options or both grips=recentre)");
+        cinema_last_logged=available;
+    }
+    if(!available)return;
+    struct pad_player_state* s=pad_state(0);
+    if(s&&s->connected&&s->instrument)return; // never corrupt original physical instrument
+    struct pad_reading r={0};
+    r.left_x=r.left_y=r.right_x=r.right_y=128;
+    r.connected=true;
+    if(s&&s->connected){
+        r.buttons=s->last.buttons;
+        r.left_x=s->last.left_x;r.left_y=s->last.left_y;
+        r.right_x=s->last.right_x;r.right_y=s->last.right_y;
+        r.l2=s->last.l2;r.r2=s->last.r2;
+        r.timestamp_us=s->last.timestamp_us;
+    }
+    if(!encore_cinema_merge(&in,&r))return;
+    if(s&&s->connected){
+        s->last.buttons=r.buttons;
+        s->last.left_x=r.left_x;s->last.left_y=r.left_y;
+        s->last.right_x=r.right_x;s->last.right_y=r.right_y;
+        s->last.l2=r.l2;s->last.r2=r.r2;
+        s->taken[0]=r;s->taken_count=1;
+    }else{
+        cinema_virtual_sample=r;
+        cinema_virtual=1;
+    }
+}
+#endif
 /* Bounded event queue: the game's existing asynchronous tester log drains this
  * after initialization. No filesystem access in the pad/input polling path. */
 static char pad_events[16][256];
@@ -548,6 +590,9 @@ pad_poll(struct pad *pad)
             state->last = *s;
       }
    }
+#if defined(ENCORE_VR_CINEMA)
+   cinema_bridge_input();
+#endif
    (void)pad_player(0, pad);
 }
 
@@ -567,12 +612,30 @@ pad_players(void)
       if (state != NULL && state->connected)
          players |= 1u << player;
    }
+#if defined(ENCORE_VR_CINEMA)
+   if(cinema_virtual)players|=1u;
+#endif
    return players;
 }
 
 bool
 pad_player(int player, struct pad *pad)
 {
+#if defined(ENCORE_VR_CINEMA)
+   if(player==0&&cinema_virtual){
+      struct pad_player_state synth={0};
+      synth.handle=0;
+      synth.last.buttons=cinema_virtual_sample.buttons;
+      synth.last.left_x=cinema_virtual_sample.left_x;
+      synth.last.left_y=cinema_virtual_sample.left_y;
+      synth.last.right_x=cinema_virtual_sample.right_x;
+      synth.last.right_y=cinema_virtual_sample.right_y;
+      synth.last.l2=cinema_virtual_sample.l2;
+      synth.last.r2=cinema_virtual_sample.r2;
+      pad_fill(&synth,pad);
+      return true;
+   }
+#endif
    const struct pad_player_state *state = pad_state(player);
    if (state == NULL || !state->connected) {
       struct pad_player_state rest;
@@ -587,6 +650,12 @@ pad_player(int player, struct pad *pad)
 int
 pad_player_readings(int player, const struct pad_reading **readings)
 {
+#if defined(ENCORE_VR_CINEMA)
+   if(player==0&&cinema_virtual){
+      *readings=&cinema_virtual_sample;
+      return 1;
+   }
+#endif
    const struct pad_player_state *state = pad_state(player);
    *readings = state != NULL ? state->taken : NULL;
    return state != NULL ? state->taken_count : 0;

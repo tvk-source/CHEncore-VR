@@ -84,6 +84,15 @@ typedef struct {
     psvr2_pose aim;        /* source 4: the aim pose, as the headset reports it */
 } psvr2_controller;
 
+#if defined(ENCORE_VR_CINEMA)
+/* Native, read-only snapshot of both Sense pads for the original game
+ * input backend. Updated by psvr2_poll after each compositor frame.
+ * Does not claim or close the physical DualSense / instrument handle. */
+typedef struct { int connected; uint32_t buttons; float stick[2]; float trigger; } psvr2_cinema_hand;
+typedef struct { psvr2_cinema_hand side[2]; } psvr2_cinema_input;
+int psvr2_cinema_input_snapshot(psvr2_cinema_input *out);
+#endif
+
 /* Loads Hmd2 and VrTracker2, opens the headset, starts tracking and the
  * reprojection. Safe to call more than once. 0 on success. */
 int psvr2_init(void);

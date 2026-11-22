@@ -10,6 +10,9 @@ if [[ $(realpath "$pack") != $(realpath -m local-assets/EncoreAssets-v1.encore-a
 fi
 export ENCORE_ASSET_PACK="$root/local-assets/EncoreAssets-v1.encore-assets"
 export PS5_DIST_ROOT="$root/dist-vr-cinema"
+# Verify pure, portable Sense-to-gamepad mappings without touching the console.
+cc -std=c11 -O2 -Wall -Wextra -Werror -I"$root" tests/encore_cinema_pad_tests.c -lm -o /tmp/encore-cinema-pad-tests
+/tmp/encore-cinema-pad-tests
 # One combined host and native build batch; stop before native on host failure.
 bash ps5/tools/cinema-reference.sh
 ENCORE_VR_PROBE=0 ENCORE_VR_CINEMA=1 bash ps5/tools/build.sh

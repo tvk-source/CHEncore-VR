@@ -535,8 +535,8 @@ static struct {
     int vib_mode_set[3];
     /* menu button: a short press is a menu tap, a 1 s hold recentres
      * (0 left Sense Create, 1 right Sense Options, 2 DualSense Options) */
-    uint64_t menu_down_us[3];
-    int menu_held_fired[3];
+    uint64_t menu_down_us[4];
+    int menu_held_fired[4];
     uint64_t menu_tap_until[2];
     int recenter_req;
     int ds_peek;               /* hosted: the host's DualSense, read for the hold only */
@@ -554,7 +554,7 @@ static int menu_hold(int i, int down, uint64_t now)
         } else if (!P.menu_held_fired[i] && now - P.menu_down_us[i] >= MENU_HOLD_US) {
             P.menu_held_fired[i] = 1;
             P.recenter_req = 1;
-            XRLOG("psvr2: menu button held: recentre");
+            XRLOG("psvr2: %s held >=1s: recenter", i==3?"both Sense grips":i==2?"DualSense Options":i==1?"right Sense Options":"left Sense Create");
         }
         return 0;
     }
@@ -662,8 +662,19 @@ static void sense_read(int side)
     uint8_t raw[0x68];
     memset(raw, 0, sizeof raw);
     const int rc = scePadVrControllerReadState(P.sense[side], raw);
-    if (rc == 0)
+    if (rc == 0) {
+#if defined(ENCORE_VR_CINEMA)
+        // Avoid logging sub-pixel stick jitter several times every second.
+        // Preserve button changes, including a long-press diagnostic.
+        uint32_t buttons=0, old=0;
+        memcpy(&buttons,raw,sizeof buttons);
+        memcpy(&old,P.last_raw[side],sizeof old);
+        if(buttons!=old)XRLOG("psvr2: sense %d buttons 0x%08x",side,buttons);
+        memcpy(P.last_raw[side],raw,0x10);
+#else
         log_bytes_changed("sense", side, raw, P.last_raw[side], 0x10);
+#endif
+    }
     const int connected = rc == 0 && (raw[0x40] & 1);
     if (connected != P.sense_connected[side])
         XRLOG("psvr2: %s Sense controller %s", side ? "right" : "left", connected ? "connected" : "gone");
@@ -764,6 +775,25 @@ int psvr2_take_recenter(void)
     return r;
 }
 
+#if defined(ENCORE_VR_CINEMA)
+int psvr2_cinema_input_snapshot(psvr2_cinema_input *out) {
+    if(!out)return 0;
+    memset(out,0,sizeof *out);
+    pthread_mutex_lock(&pad_lock);
+    int active=H.active,connected=0;
+    if(active)for(int i=0;i<2;++i) {
+        out->side[i].connected=P.sense_connected[i];
+        if(!P.sense_connected[i])continue;
+        connected=1;
+        out->side[i].buttons=P.sense_buttons[i];
+        out->side[i].stick[0]=P.sense_stick[i][0];
+        out->side[i].stick[1]=P.sense_stick[i][1];
+        out->side[i].trigger=P.sense_trigger[i];
+    }
+    pthread_mutex_unlock(&pad_lock);
+    return connected;
+}
+#endif
 static void triggers_poll(void);
 
 void psvr2_poll(void)
@@ -775,6 +805,13 @@ void psvr2_poll(void)
             sense_read(side);
     dualsense_read();
     dualsense_peek();
+#if defined(ENCORE_VR_CINEMA)
+    // Reliable fallback if the PS/system button is intercepted: hold both
+    // Sense grip buttons together for one second to recenter.
+    menu_hold(3,P.sense_connected[0]&&P.sense_connected[1]&&
+        (P.sense_buttons[0]&PSVR2_BTN_GRIP)&&
+        (P.sense_buttons[1]&PSVR2_BTN_GRIP),psvr2_now_us());
+#endif
     /* Injected menu presses (debug server) go through the hold too. */
     for (int side = 0; side < 2; side++)
         if (P.inj_input[side] && P.inj_until[side] > psvr2_now_us())
@@ -1994,7 +2031,10 @@ static int apply_mode(int mode)
 int sceVideoOutGetVblankStatus(int handle, void *status);
 int sceVideoOutGetFlipStatus(int handle, void *status);
 #if defined(ENCORE_VR_CINEMA)
-void *psvr2_cinema_alloc(size_t bytes){return bytes==2048u*1024u*4u?direct_alloc(bytes,0x10000):NULL;}
+void *psvr2_cinema_alloc(size_t bytes){
+    const size_t low=2u*1024u*1024u*4u,high=2u*1440u*1440u*4u;
+    return bytes==low||bytes==high?direct_alloc(bytes,0x10000):NULL;
+}
 int psvr2_cinema_flip(uint64_t *shown){uint64_t status[32]={0};if(!H.active||!shown)return -1;int rc=sceVideoOutGetFlipStatus(H.vh,status);*shown=status[3];return rc;}
 #endif
 static int wait_display_live(void)
