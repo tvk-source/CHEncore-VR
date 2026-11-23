@@ -64,6 +64,9 @@ const char* stbi_failure_reason(void);
 #include "gameplay/pc_resume.hpp"
 #include "gameplay/pc_lyrics.hpp"
 #include "gameplay/highway_view.hpp"
+#if defined(ENCORE_VR_CINEMA)
+#include "../../ps5/vr/stereo_highway.hpp"
+#endif
 #include "gameplay/pc_player_camera.hpp"
 #include "ps5_samples.h"
 #if defined(PS5_HOST_REFERENCE)
@@ -7888,6 +7891,32 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
         visibleNotes.clear();
         rhythm::submitVisibleNotes(chart, renderTime, -HIGHWAY_FAR / currentSpeedZ(),
             HIGHWAY_NEAR / currentSpeedZ(), [&](const rhythm::RenderNote& n) { visibleNotes.push_back(n); });
+#if defined(ENCORE_VR_CINEMA)
+        // Publish only real, future, unjudged chart gems, and only during
+        // five-fret gameplay. This is the same actual song clock driving the
+        // original 2D highway and score, not a synthetic VR rhythm sequence.
+        if(screen==Screen::Gameplay && playing && !ui.visible &&
+           chart.kind==rhythm::ChartKind::FiveFret && activeGameplaySeat==primaryGameplaySeat) {
+            encore::vr::StereoHighwayFrame live{};
+            live.active=true;
+            for(const auto& chord:visibleNotes){
+                if(!std::isfinite(chord.timeUntilHit)||chord.timeUntilHit<0||
+                   chord.timeUntilHit>2.25)continue;
+                auto first=std::lower_bound(notes.begin(),notes.end(),chord.noteIndex,
+                    [](const Note& note,size_t index){return note.chordIndex<index;});
+                for(auto it=first;it!=notes.end()&&it->chordIndex==chord.noteIndex;++it){
+                    if(it->hit||it->missed||it->lane<0||it->lane>4)continue;
+                    if(live.count>=encore::vr::kStereoHighwayNotes)break;
+                    live.notes[live.count++]={
+                        uint8_t(it->lane),float(chord.timeUntilHit),
+                        float(std::clamp(it->sustainSec,0.0,10.0))
+                    };
+                }
+                if(live.count>=encore::vr::kStereoHighwayNotes)break;
+            }
+            encore::vr::encoreCinemaPublishHighway(live);
+        }
+#endif
         // Chords arrive chronologically; paint in reverse order for transparent overlap.
         for (auto chord = visibleNotes.rbegin(); chord != visibleNotes.rend(); ++chord) {
             auto first = std::lower_bound(notes.begin(), notes.end(), chord->noteIndex,
@@ -8417,6 +8446,11 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
     {
         const double frameStart = now_seconds();
         if (!prepared) return;
+#if defined(ENCORE_VR_CINEMA)
+        // Never leave stale gameplay geometry visible in song selection,
+        // pause, results or when a new song begins loading.
+        encore::vr::encoreCinemaPublishHighway({});
+#endif
         updateGameplay();
         profileUpdateMs=(now_seconds()-frameStart)*1000.;
         if(ps5.frameBudget && (multiplayerQa || (multiplayerQaLibraryLoaded && gameplaySeatMask)) && (multiplayerQaReplay || ps5.framesDrawn%15==0)) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "cinema_reference.hpp"
 #include "cinema_geometry.hpp"
+#include "stereo_highway.hpp"
 #include "cinema_source.hpp"
 #include <volk.h>
 #include <cstddef>
@@ -15,6 +16,7 @@
 #include "ghost/psvr2.h"
 #include "probe_retirement.h"
 #include "probe_timing.h"
+#include <mutex>
 #include "../src/platform.h"
 #endif
 
@@ -42,6 +44,9 @@ struct Resources {
     VkSampler sampler{};VkDescriptorSetLayout setLayout{};VkDescriptorPool descPool{};
     VkDescriptorSet set{};VkPipelineLayout layout{};VkRenderPass pass{};
     VkFramebuffer framebuffer{};VkPipeline pipeline{};VkShaderModule vert{},frag{};
+#if defined(ENCORE_VR_CINEMA)
+    VkPipeline stereoPipeline{};VkShaderModule stereoFrag{};
+#endif
     VkCommandPool cmdPool{};VkCommandBuffer cmd{};VkFence fence{};
     bool pending{};
     Resources(VkPhysicalDevice p,VkDevice dev):d(dev){vkGetPhysicalDeviceMemoryProperties(p,&memory);}
@@ -51,6 +56,10 @@ struct Resources {
         if(fence)vkDestroyFence(d,fence,nullptr);
         if(cmdPool)vkDestroyCommandPool(d,cmdPool,nullptr);
         if(pipeline)vkDestroyPipeline(d,pipeline,nullptr);
+#if defined(ENCORE_VR_CINEMA)
+        if(stereoPipeline)vkDestroyPipeline(d,stereoPipeline,nullptr);
+        if(stereoFrag)vkDestroyShaderModule(d,stereoFrag,nullptr);
+#endif
         if(framebuffer)vkDestroyFramebuffer(d,framebuffer,nullptr);
         if(pass)vkDestroyRenderPass(d,pass,nullptr);
         if(vert)vkDestroyShaderModule(d,vert,nullptr);
@@ -136,7 +145,11 @@ struct CinemaRenderer {
         r.image(r.source,format,extent,VK_IMAGE_USAGE_TRANSFER_DST_BIT|VK_IMAGE_USAGE_SAMPLED_BIT);
         r.image(r.target,VK_FORMAT_R8G8B8A8_UNORM,{width,height},VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 
+#if defined(ENCORE_VR_CINEMA)
+        r.buffer(r.vertices,sizeof(CinemaVertex)*(12+kStereoHighwayMaxVertices),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+#else
         r.buffer(r.vertices,sizeof(CinemaVertex)*12,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+#endif
         r.buffer(r.readback,bytes,VK_BUFFER_USAGE_TRANSFER_DST_BIT);
         VkSamplerCreateInfo si{};si.sType=VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
         // Linear filtering removes the blocky nearest-neighbour source sampling;
@@ -208,6 +221,14 @@ struct CinemaRenderer {
         pi.stageCount=2;pi.pStages=stages;pi.pVertexInputState=&vi;pi.pInputAssemblyState=&ia;pi.pViewportState=&vp;
         pi.pRasterizationState=&rs;pi.pMultisampleState=&ms;pi.pColorBlendState=&bs;pi.pDynamicState=&ds;pi.layout=r.layout;pi.renderPass=r.pass;
         CHECK(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&pi,nullptr,&r.pipeline));
+#if defined(ENCORE_VR_CINEMA)
+        // Independent physically projected world-geometry pipeline. The game
+        // remains a textured cinema panel behind it. No new GPU queue, depth
+        // image, firmware calls or modification to the original game pipeline.
+        r.stereoFrag=r.shader(shaders+"/highway3d.frag.spv");
+        stages[1].module=r.stereoFrag;
+        CHECK(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&pi,nullptr,&r.stereoPipeline));
+#endif
         VkCommandPoolCreateInfo ci{};ci.sType=VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;ci.queueFamilyIndex=family;
         CHECK(vkCreateCommandPool(device,&ci,nullptr,&r.cmdPool));
         VkCommandBufferAllocateInfo cai{};cai.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -216,15 +237,22 @@ struct CinemaRenderer {
         VkFenceCreateInfo fc{};fc.sType=VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;CHECK(vkCreateFence(device,&fc,nullptr,&r.fence));
 
     }
-    void render(VkImage original,VkImageLayout sourceLayout,const CinemaScreen& screen,const Eye (&eyes)[2]){
-        std::array<CinemaVertex,12> verts{};
+    void render(VkImage original,VkImageLayout sourceLayout,const CinemaScreen& screen,
+                const Eye (&eyes)[2],const StereoHighwayFrame& live){
+        std::vector<CinemaVertex> verts(12);
+#if defined(ENCORE_VR_CINEMA)
+        StereoHighwayDraw stereo{};
+        if(!stereoHighwayGeometry(live,screen,eyes,verts,stereo))
+            throw std::runtime_error("invalid stereo chart geometry");
+#endif
         for(int i=0;i<2;++i){
             auto v=cinemaVertices(screen,eyes[i]);if(!v)throw std::runtime_error("bad eye projection");
             std::copy(v->begin(),v->end(),verts.begin()+6*i);
         }
         void* mapped=nullptr;
-        CHECK(vkMapMemory(device,r.vertices.memory,0,sizeof verts,0,&mapped));
-        std::memcpy(mapped,verts.data(),sizeof verts);vkUnmapMemory(device,r.vertices.memory);
+        const VkDeviceSize vertexBytes=VkDeviceSize(verts.size())*sizeof(CinemaVertex);
+        CHECK(vkMapMemory(device,r.vertices.memory,0,vertexBytes,0,&mapped));
+        std::memcpy(mapped,verts.data(),size_t(vertexBytes));vkUnmapMemory(device,r.vertices.memory);
         VkCommandBufferBeginInfo begin{};begin.sType=VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
         CHECK(vkResetCommandPool(device,r.cmdPool,0));
         CHECK(vkResetFences(device,1,&r.fence));
@@ -242,7 +270,14 @@ struct CinemaRenderer {
             VkViewport viewport{float(i*eyeSize),0,float(eyeSize),float(eyeSize),0,1};
             VkRect2D scissor{{int32_t(i*eyeSize),0},{eyeSize,eyeSize}};
             vkCmdSetViewport(r.cmd,0,1,&viewport);vkCmdSetScissor(r.cmd,0,1,&scissor);
+            vkCmdBindPipeline(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.pipeline);
             vkCmdDraw(r.cmd,6,1,i*6,0);
+#if defined(ENCORE_VR_CINEMA)
+            if(stereo.count[i]){
+                vkCmdBindPipeline(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.stereoPipeline);
+                vkCmdDraw(r.cmd,stereo.count[i],1,stereo.first[i],0);
+            }
+#endif
         }
         vkCmdEndRenderPass(r.cmd);
         VkBufferImageCopy copy{};copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.imageExtent={width,height,1};
@@ -291,7 +326,7 @@ bool encoreCinemaReference(VkPhysicalDevice physical,VkDevice device,VkQueue que
         // Exercise the persistent resource path as well as first use.
         // Same source is restored each time; the sampled image is reused.
         for(unsigned frame=0;frame<3;++frame)
-            renderer.render(original,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,*screen,eyes);
+            renderer.render(original,VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,*screen,eyes,{});
         std::fprintf(stderr,"CINEMA_REFERENCE persistent_frames=3\n");
         std::vector<uint8_t> rgba(bytes),rgb(size_t(width)*height*3);
         renderer.copy(rgba.data());
@@ -319,6 +354,20 @@ bool encoreCinemaReference(VkPhysicalDevice physical,VkDevice device,VkQueue que
 #undef CHECK
 
 #if defined(ENCORE_VR_CINEMA)
+namespace encore::vr {
+namespace {
+std::mutex stereoMutex;
+StereoHighwayFrame stereoPublished{};
+}
+void encoreCinemaPublishHighway(const StereoHighwayFrame& current){
+    std::lock_guard<std::mutex> lock(stereoMutex);
+    stereoPublished=current;
+}
+StereoHighwayFrame encoreCinemaReadHighway(){
+    std::lock_guard<std::mutex> lock(stereoMutex);
+    return stereoPublished;
+}
+}
 namespace {
 struct NativeCinema {
     std::unique_ptr<CinemaRenderer> renderer;
@@ -402,7 +451,10 @@ bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue q
             if(slot<0)throw std::runtime_error("pre-render buffer gate");
         }
         const uint64_t gpu=psvr2_now_us();
-        native.renderer->render(image,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,*native.screen,eyes);
+        const auto live=encoreCinemaReadHighway();
+        native.renderer->render(image,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,*native.screen,eyes,live);
+        if(live.active&&(id==1||id%300==0))
+            say("VR_STEREO chart_3d active live_gems=%u",live.count);
         psvr2_note_gpu(psvr2_now_us()-gpu);
         if(native.frame){
             uint64_t latest=0;int rc=psvr2_cinema_flip(&latest);
