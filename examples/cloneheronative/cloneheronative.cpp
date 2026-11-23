@@ -66,6 +66,8 @@ const char* stbi_failure_reason(void);
 #include "gameplay/highway_view.hpp"
 #if defined(ENCORE_VR_CINEMA)
 #include "../../ps5/vr/stereo_highway.hpp"
+#include "../../ps5/vr/cinema_reference.hpp"
+#include "../../ps5/vr/ghost/psvr2.h"
 #endif
 #include "gameplay/pc_player_camera.hpp"
 #include "ps5_samples.h"
@@ -224,6 +226,9 @@ public:
         size_t meterIndex{},sequence{};
     };
     std::vector<GameplayDraw> spriteDraws,gameplayDraws;
+#if defined(ENCORE_VR_CINEMA)
+    encore::vr::StereoHighwayFrame vrSourceFrame{};
+#endif
     bool renderProfileQa{},renderBatching{true};
     VkQueryPool renderTimestampPool{VK_NULL_HANDLE};
     std::vector<bool> renderTimestampPending;
@@ -4723,7 +4728,21 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
             frets=multiFrame->frets;guitar={static_cast<uint16_t>(frets),multiFrame->up!=0,multiFrame->down!=0};
             requestStarPower=multiFrame->sp!=0;logicalInstrument.pads=static_cast<uint16_t>(frets);
         }
-        session.setGamepadMode(gamepadMode || drumController || (replaying && (gameplayReplayPcModifiers&0x100000)),replaying && (gameplayReplayPcModifiers&0x200000));
+        bool senseGamepadMode=false;
+#if defined(ENCORE_VR_CINEMA)
+        // A pair of Sense controllers has five frets but no physical guitar
+        // strum bar. Let the original session judge fret presses in its
+        // existing Gamepad Mode, without changing saved user preferences.
+        psvr2_cinema_input sense{};
+        senseGamepadMode=chart.kind==rhythm::ChartKind::FiveFret &&
+            gameplayPlayer<playerSeats.count &&
+            playerSeats.slotOfSeat[gameplayPlayer]==0 &&
+            !pad_player_instrument(0) &&
+            psvr2_cinema_input_snapshot(&sense)!=0 &&
+            sense.side[0].connected&&sense.side[1].connected;
+#endif
+        session.setGamepadMode(gamepadMode || senseGamepadMode || drumController ||
+            (replaying && (gameplayReplayPcModifiers&0x100000)),replaying && (gameplayReplayPcModifiers&0x200000));
         session.setAutoStrum(replaying && (gameplayReplayPcModifiers&0x4000));
         session.setAllStrums(rhythm::allStrumsRequired(playerModifierMask[gameplayPlayer]));
         session.setNoFretGhosting((playerModifierMask[gameplayPlayer]&(1u<<6))!=0);
@@ -7914,7 +7933,10 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
                 }
                 if(live.count>=encore::vr::kStereoHighwayNotes)break;
             }
-            encore::vr::encoreCinemaPublishHighway(live);
+            // Defer publishing until the original source sprite batches are
+            // available later in render(). This keeps chart and visuals on
+            // exactly the same game frame and preserves the real song clock.
+            vrSourceFrame=std::move(live);
         }
 #endif
         // Chords arrive chronologically; paint in reverse order for transparent overlap.
@@ -8307,6 +8329,10 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
         applyDisplayPacing();
         ImGui::GetIO().FontDefault = ImGui::GetIO().Fonts->Fonts.back();
         if (!prepareTextures()) { quit=true; return; }
+#if defined(ENCORE_VR_CINEMA)
+        // Game-owned original PC atlas images: GPU read-only in stereo.
+        ::encoreCinemaSetAtlasViews(atlasTex.view,highwayTex.view);
+#endif
         buildGeometry();
         prepareUniformBuffers();
         setupDescriptors();
@@ -8449,6 +8475,7 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
 #if defined(ENCORE_VR_CINEMA)
         // Never leave stale gameplay geometry visible in song selection,
         // pause, results or when a new song begins loading.
+        vrSourceFrame={};
         encore::vr::encoreCinemaPublishHighway({});
 #endif
         updateGameplay();
@@ -8573,6 +8600,31 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
         buildMeterFrame();
         if(!meterScratch.empty()) memcpy(meterBuffers[currentBuffer].mapped,meterScratch.data(),meterScratch.size()*sizeof(TexVertex));
         auto& tv = spriteScratch; buildTexFrame(tv);
+#if defined(ENCORE_VR_CINEMA)
+        if(seat==primaryGameplaySeat&&vrSourceFrame.active){
+            vrSourceFrame.sourceFar=-HIGHWAY_FAR;
+            // Copy the very same source-authored sprite triangles rendered by
+            // the flat engine: PC UV atlas, color tint, animated note position
+            // and held/hit receptor geometry. No synthetic gem positions.
+            for(const auto& d:spriteDraws){
+                const bool guitar=d.kind==GameplayDrawKind::Atlas;
+                const bool highway=d.kind==GameplayDrawKind::Highway;
+                if(!guitar&&!highway)continue;
+                auto& output=guitar?vrSourceFrame.guitar:vrSourceFrame.highway;
+                if(d.count%3||d.first>tv.size()||d.count>tv.size()-d.first||
+                   output.size()+d.count>encore::vr::kStereoAssetMaxVertices)continue;
+                for(uint32_t i=0;i<d.count;++i){
+                    const auto& v=tv[d.first+i];
+                    encore::vr::StereoSourceVertex copy{};
+                    for(int k=0;k<3;++k)copy.pos[k]=v.pos[k];
+                    for(int k=0;k<2;++k)copy.uv[k]=v.uv[k];
+                    for(int k=0;k<4;++k)copy.color[k]=v.color[k];
+                    output.push_back(copy);
+                }
+            }
+            encore::vr::encoreCinemaPublishHighway(vrSourceFrame);
+        }
+#endif
         buildSustainFrame(sustainScratch);
         if (!sustainScratch.empty()) memcpy(sustainBuffers[currentBuffer].mapped, sustainScratch.data(), sustainScratch.size()*sizeof(TexVertex));
         if (!tv.empty())
