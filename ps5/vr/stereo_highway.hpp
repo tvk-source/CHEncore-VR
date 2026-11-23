@@ -116,11 +116,13 @@ struct StereoSourceDraw {
 // 0.59 m vertical rise compressed the track to roughly half its visual height.
 // Preserve the original source depth ordering, but give the neck a comfortable
 // full-height stereo incline with its far tip above the eye-level center.
-inline Vec stereoSourceLocal(const StereoSourceVertex& src,float sourceFar) {
+inline Vec stereoSourceLocal(const StereoSourceVertex& src,float sourceFar,float yScale=.68f) {
     const float along=std::clamp(-src.pos[2]/sourceFar,0.f,1.f);
-    // Preserve the original sprite aspect. Alpha 6 scaled their local Y by
-    // 0.085 vs 0.34 for X, squashing round note gems into flat rectangles.
-    return {.34f*src.pos[0],-.80f+1.37f*along+.30f*src.pos[1],
+    // Original PC note-cap quads are ~2x as wide as they are high before
+    // perspective. To recover their circular silhouette on a headset,
+    // use ~2x the local Y basis (0.68) compared with local X (0.34).
+    // Keep smaller 0.32 Y for rails/effects; they are NOT round note caps.
+    return {.34f*src.pos[0],-.80f+1.37f*along+yScale*src.pos[1],
             .87f-1.12f*along-.05f*src.pos[1]};
 }
 inline bool stereoSourceGeometry(const StereoHighwayFrame& frame,const CinemaScreen& screen,
@@ -152,7 +154,7 @@ inline bool stereoSourceGeometry(const StereoHighwayFrame& frame,const CinemaScr
                     for(float f:src.uvNext)if(!std::isfinite(f))return false;
                     for(float f:src.color)if(!std::isfinite(f))return false;
                     if(!std::isfinite(src.frameBlend))return false;
-                    const Vec local=stereoSourceLocal(src,frame.sourceFar);
+                    const Vec local=stereoSourceLocal(src,frame.sourceFar,kind==3?.68f:.32f);
                     const Vec world=screen.pose.pos+rotate(screen.pose.rot,local);
                     const auto clip=cinemaTransform(*proj,
                         cinemaTransform(camera,{world.x,world.y,world.z,1.f}));
