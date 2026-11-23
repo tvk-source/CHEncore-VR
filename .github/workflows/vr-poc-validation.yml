@@ -1,0 +1,29 @@
+name: VR POC CPU and shader validation
+on:
+  push:
+    branches: [vr-development, final-poc-alpha7]
+  workflow_dispatch:
+jobs:
+  portable-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Vulkan GLSL compiler
+        run: sudo apt-get update && sudo apt-get install -y glslang-tools
+      - name: Sense bridge C regression tests
+        run: |
+          cc -std=c11 -DENCORE_VR_CINEMA=1 -O2 -Wall -Wextra -Werror -I. \
+             tests/encore_cinema_pad_tests.c -lm -o /tmp/encore-cinema-pad-tests
+          /tmp/encore-cinema-pad-tests
+      - name: Stereo geometry C++ regression tests
+        run: |
+          c++ -std=c++20 -O2 -Wall -Wextra -Werror -I. \
+            tests/encore_stereo_highway_tests.cpp -o /tmp/encore-stereo-highway-tests
+          /tmp/encore-stereo-highway-tests
+      - name: Validate all runtime cinema/atlas/HUD shaders
+        run: |
+          for shader in cinema.vert cinema.frag atlas.vert atlas.frag hud.frag; do
+            glslangValidator -V --target-env vulkan1.3 \
+              "ps5/vr/shaders/$shader" -o "/tmp/${shader}.spv"
+          done
