@@ -59,7 +59,8 @@ if [[ $cinema == ON ]]; then
     for stage in vert frag; do
         glslangValidator -V --target-env vulkan1.3 "$ps5/vr/shaders/cinema.$stage" -o "$app/shaders/cinema/cinema.$stage.spv"
     done
-    glslangValidator -V --target-env vulkan1.3 "$ps5/vr/shaders/highway3d.frag" -o "$app/shaders/cinema/highway3d.frag.spv"
+    # Alpha 4's fake black-highway shader must not survive as staged baggage.
+    rm -f "$app/shaders/cinema/highway3d.frag.spv"
     for stage in vert frag; do
         glslangValidator -V --target-env vulkan1.3 "$ps5/vr/shaders/atlas.$stage" -o "$app/shaders/cinema/atlas.$stage.spv"
     done
