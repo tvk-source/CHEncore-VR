@@ -47,16 +47,23 @@ int main(){
         g.pos[1]=.2f;g.color[0]=.4f;g.color[3]=.75f;
         textured.guitar.push_back(g);
     }
+    for(int i=0;i<3;++i){
+        StereoSourceVertex v{};
+        v.pos[0]=float(i)-1.f;
+        v.pos[2]=-20.f;
+        v.uv[1]=float(i)*4.f; // scrolling board uses repeated V
+        textured.board.push_back(v);
+    }
     std::vector<CinemaVertex> texturedVerts(12);
     StereoSourceDraw source{};
     assert(stereoSourceGeometry(textured,*screen,eyes,texturedVerts,source));
-    assert(source.count[0][0]==3&&source.count[0][1]==3);
-    assert(source.count[1][0]==3&&source.count[1][1]==3);
-    assert(texturedVerts[source.first[0][1]].color[0]==.4f);
-    assert(texturedVerts[source.first[0][1]].color[3]==.75f);
-    assert(texturedVerts[source.first[0][1]].u==0.f);
-    const auto& a=texturedVerts[source.first[0][1]];
-    const auto& b=texturedVerts[source.first[1][1]];
+    assert(source.count[0][0]==3&&source.count[0][1]==3&&source.count[0][2]==3);
+    assert(source.count[1][0]==3&&source.count[1][1]==3&&source.count[1][2]==3);
+    assert(texturedVerts[source.first[0][2]].color[0]==.4f);
+    assert(texturedVerts[source.first[0][2]].color[3]==.75f);
+    assert(texturedVerts[source.first[0][2]].u==0.f);
+    const auto& a=texturedVerts[source.first[0][2]];
+    const auto& b=texturedVerts[source.first[1][2]];
     assert(std::abs(a.clip[0]/a.clip[3]-b.clip[0]/b.clip[3])>.005f);
     textured.sourceFar=0.f;
     assert(!stereoSourceGeometry(textured,*screen,eyes,texturedVerts,source));
