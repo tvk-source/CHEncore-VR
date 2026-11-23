@@ -4844,6 +4844,29 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
                     vibratePlayer(gameplayPlayer,rumbleStrength * 0.38f, rumbleStrength);
                     rumbleActive = true;
                     rumbleStopTime = now_seconds() + 0.045;
+#if defined(ENCORE_VR_CINEMA)
+                    // The normal rumble path targets the DualSense handle.
+                    // Use Ghost VR's existing Sense vibration API for successful
+                    // five-fret judgements; never pulse on raw button edges or
+                    // misses. It stops itself after 45 ms via psvr2_poll().
+                    if(chart.kind==rhythm::ChartKind::FiveFret && !activeProfile.bot) {
+                        psvr2_cinema_input sense{};
+                        if(psvr2_cinema_input_snapshot(&sense)) {
+                            const auto& chord=chart.notes[hit.noteIndex];
+                            const bool left=(chord.frets&0x03u)!=0 || chord.open;
+                            const bool right=(chord.frets&0x1cu)!=0 || chord.open;
+                            const float amplitude=std::clamp(rumbleStrength,0.0f,0.85f);
+                            const unsigned hands=(left&&sense.side[0].connected?1u:0u) |
+                                (right&&sense.side[1].connected?2u:0u);
+                            if(hands&1u)psvr2_haptic(0,amplitude,0.045f);
+                            if(hands&2u)psvr2_haptic(1,amplitude,0.045f);
+                            static unsigned hapticLogCount=0;
+                            if(hands && hapticLogCount++<5)
+                                say("VR_HAPTIC hit hands=%u frets=0x%02x amp=%.2f duration_ms=45",
+                                    hands,unsigned(chord.frets),double(amplitude));
+                        }
+                    }
+#endif
                 }
                 if(!drumController) settleSustainsForHead(hit.noteIndex,hitTime);
                 const unsigned gems=static_cast<unsigned>(chordNoteOffsets[hit.noteIndex+1]-chordNoteOffsets[hit.noteIndex]);
