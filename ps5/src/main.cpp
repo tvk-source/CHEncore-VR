@@ -435,7 +435,7 @@ int main(int argc,char** argv)
 #if defined(ENCORE_VR_CINEMA)
     // Unambiguous startup identity: an old cinema binary cannot print this.
     // Use the configured source revision, never an updater version number.
-    say("VR_BUILD_ALPHA5_ATLAS_STEREO source=%s",
+    say("VR_BUILD_ALPHA6_STEREO_HUD source=%s",
 #ifdef ENCORE_VR_SOURCE_REV
         ENCORE_VR_SOURCE_REV
 #else
