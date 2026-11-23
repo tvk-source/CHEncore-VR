@@ -15,6 +15,8 @@ struct StereoSourceVertex {
     float pos[3]{};
     float uv[2]{};
     float color[4]{1.f,1.f,1.f,1.f};
+    float uvNext[2]{};
+    float frameBlend{};
 };
 struct StereoHighwayNote {
     uint8_t lane{};         // 0..4 = G R Y B O
@@ -28,7 +30,9 @@ struct StereoHighwayFrame {
     float sourceFar{39.35f}; // source game's visible world-space depth
     std::vector<StereoSourceVertex> board{};   // PC's scrolling highway board
     std::vector<StereoSourceVertex> highway{}; // PC highway texture UVs/geometry
+    std::vector<StereoSourceVertex> sustain{}; // Source-authored sustain ribbon/UVs
     std::vector<StereoSourceVertex> guitar{};  // PC guitar atlas: gems/receptors
+    std::vector<StereoSourceVertex> effects{}; // Original animated guitar hit effects
 };
 struct StereoHighwayDraw {
     uint32_t first[2]{},count[2]{};
@@ -106,7 +110,7 @@ inline bool stereoHighwayGeometry(
 // Preserve PC geometry, sprite UVs and tints; change only its world placement
 // and the left/right headset projection. The 2D cinema is NOT sampled here.
 struct StereoSourceDraw {
-    uint32_t first[2][3]{},count[2][3]{}; // [eye][0 board / 1 highway / 2 guitar]
+    uint32_t first[2][5]{},count[2][5]{}; // [eye][board, highway, sustain, guitar, effects]
 };
 // The source chart extends tens of game units into the distance. Alpha 5's
 // 0.59 m vertical rise compressed the track to roughly half its visual height.
@@ -114,8 +118,10 @@ struct StereoSourceDraw {
 // full-height stereo incline with its far tip above the eye-level center.
 inline Vec stereoSourceLocal(const StereoSourceVertex& src,float sourceFar) {
     const float along=std::clamp(-src.pos[2]/sourceFar,0.f,1.f);
-    return {.34f*src.pos[0],-.80f+1.37f*along+.085f*src.pos[1],
-            .87f-1.12f*along-.02f*src.pos[1]};
+    // Preserve the original sprite aspect. Alpha 6 scaled their local Y by
+    // 0.085 vs 0.34 for X, squashing round note gems into flat rectangles.
+    return {.34f*src.pos[0],-.80f+1.37f*along+.30f*src.pos[1],
+            .87f-1.12f*along-.05f*src.pos[1]};
 }
 inline bool stereoSourceGeometry(const StereoHighwayFrame& frame,const CinemaScreen& screen,
     const Eye (&eyes)[2],std::vector<CinemaVertex>& vertices,StereoSourceDraw& draw)
@@ -123,14 +129,14 @@ inline bool stereoSourceGeometry(const StereoHighwayFrame& frame,const CinemaScr
     draw={};
     if(!frame.active)return true;
     if(!validTrackedPose(screen.pose)||!std::isfinite(frame.sourceFar)||frame.sourceFar<1.f||
-       frame.board.size()>kStereoAssetMaxVertices||frame.highway.size()>kStereoAssetMaxVertices||frame.guitar.size()>kStereoAssetMaxVertices)return false;
+       frame.board.size()>kStereoAssetMaxVertices||frame.highway.size()>kStereoAssetMaxVertices||frame.sustain.size()>kStereoAssetMaxVertices||frame.guitar.size()>kStereoAssetMaxVertices||frame.effects.size()>kStereoAssetMaxVertices)return false;
     for(int eye=0;eye<2;++eye){
         if(!validTrackedPose(eyes[eye].pose))return false;
         const auto proj=projection(eyes[eye].fov,.05f,50.f);
         if(!proj)return false;
         const auto camera=view(eyes[eye].pose);
-        for(int kind=0;kind<3;++kind){
-            const auto& source=kind==0?frame.board:kind==1?frame.highway:frame.guitar;
+        for(int kind=0;kind<5;++kind){
+            const auto& source=kind==0?frame.board:kind==1?frame.highway:kind==2?frame.sustain:kind==3?frame.guitar:frame.effects;
             draw.first[eye][kind]=static_cast<uint32_t>(vertices.size());
             for(const auto& src:source){
                 for(float f:src.pos)if(!std::isfinite(f))return false;
@@ -145,7 +151,8 @@ inline bool stereoSourceGeometry(const StereoHighwayFrame& frame,const CinemaScr
                 for(float c:clip)if(!std::isfinite(c))return false;
                 if(clip[3]<.06f)return false;
                 vertices.push_back({clip,src.uv[0],src.uv[1],
-                    {src.color[0],src.color[1],src.color[2],src.color[3]}});
+                    {src.color[0],src.color[1],src.color[2],src.color[3]},
+                    {src.uvNext[0],src.uvNext[1]},src.frameBlend});
             }
             draw.count[eye][kind]=static_cast<uint32_t>(vertices.size())-draw.first[eye][kind];
         }
