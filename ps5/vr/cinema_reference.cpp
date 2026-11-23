@@ -27,7 +27,7 @@ namespace {
 #endif
 constexpr uint32_t eyeSize=ENCORE_CINEMA_EYE_PIXELS;
 static_assert(eyeSize==1024||eyeSize==1440||eyeSize==1920,"only bounded output sizes");
-struct StereoAtlasViews { VkImageView guitar{},highway{}; };
+struct StereoAtlasViews { VkImageView guitar{},highway{},board{};VkSampler boardSampler{}; };
 StereoAtlasViews stereoAtlasViews{};
 #else
 constexpr uint32_t eyeSize=1024;
@@ -49,8 +49,9 @@ struct Resources {
 #if defined(ENCORE_VR_CINEMA)
     VkPipeline stereoPipeline{},atlasPipeline{};
     VkShaderModule stereoFrag{},atlasVert{},atlasFrag{};
-    VkDescriptorSet guitarSet{},highwaySet{};
-    VkImageView configuredGuitar{},configuredHighway{};
+    VkDescriptorSet guitarSet{},highwaySet{},boardSet{};
+    VkImageView configuredGuitar{},configuredHighway{},configuredBoard{};
+    VkSampler configuredBoardSampler{};
 #endif
     VkCommandPool cmdPool{};VkCommandBuffer cmd{};VkFence fence{};
     bool pending{};
@@ -133,8 +134,8 @@ struct Resources {
 }
 #if defined(ENCORE_VR_CINEMA)
 // The original game owns these sampled images; they remain GPU-resident.
-void encoreCinemaSetAtlasViews(VkImageView guitar,VkImageView highway){
-    stereoAtlasViews={guitar,highway};
+void encoreCinemaSetAtlasViews(VkImageView guitar,VkImageView highway,VkImageView board,VkSampler boardSampler){
+    stereoAtlasViews={guitar,highway,board,boardSampler};
 }
 #endif
 
@@ -160,7 +161,7 @@ struct CinemaRenderer {
         r.image(r.target,VK_FORMAT_R8G8B8A8_UNORM,{width,height},VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 
 #if defined(ENCORE_VR_CINEMA)
-        r.buffer(r.vertices,sizeof(CinemaVertex)*(12+kStereoHighwayMaxVertices+4*kStereoAssetMaxVertices),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        r.buffer(r.vertices,sizeof(CinemaVertex)*(12+kStereoHighwayMaxVertices+6*kStereoAssetMaxVertices),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 #else
         r.buffer(r.vertices,sizeof(CinemaVertex)*12,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 #endif
@@ -182,13 +183,13 @@ struct CinemaRenderer {
         sli.bindingCount=1;sli.pBindings=&binding;
         CHECK(vkCreateDescriptorSetLayout(device,&sli,nullptr,&r.setLayout));
         #if defined(ENCORE_VR_CINEMA)
-        VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,3};
+        VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,4};
 #else
         VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1};
 #endif
         VkDescriptorPoolCreateInfo dpi{};dpi.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         #if defined(ENCORE_VR_CINEMA)
-        dpi.maxSets=3;
+        dpi.maxSets=4;
 #else
         dpi.maxSets=1;
 #endif
@@ -200,6 +201,7 @@ struct CinemaRenderer {
 #if defined(ENCORE_VR_CINEMA)
         CHECK(vkAllocateDescriptorSets(device,&dai,&r.guitarSet));
         CHECK(vkAllocateDescriptorSets(device,&dai,&r.highwaySet));
+        CHECK(vkAllocateDescriptorSets(device,&dai,&r.boardSet));
 #endif
         VkDescriptorImageInfo di{r.sampler,r.source.view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         VkWriteDescriptorSet write{};write.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -281,27 +283,31 @@ struct CinemaRenderer {
 #if defined(ENCORE_VR_CINEMA)
         StereoHighwayDraw stereo{};
         StereoSourceDraw sourceDraw{};
-        const bool sourceActive=live.active&&!live.highway.empty()&&!live.guitar.empty()&&
-            stereoAtlasViews.guitar&&stereoAtlasViews.highway;
+        const bool sourceActive=live.active&&!live.board.empty()&&!live.highway.empty()&&!live.guitar.empty()&&
+            stereoAtlasViews.guitar&&stereoAtlasViews.highway&&stereoAtlasViews.board&&stereoAtlasViews.boardSampler;
         if(sourceActive){
             if(!stereoSourceGeometry(live,screen,eyes,verts,sourceDraw))
                 throw std::runtime_error("invalid source stereo geometry");
-            if(r.configuredGuitar!=stereoAtlasViews.guitar||r.configuredHighway!=stereoAtlasViews.highway){
-                VkDescriptorImageInfo images[2]={
+            if(r.configuredGuitar!=stereoAtlasViews.guitar||r.configuredHighway!=stereoAtlasViews.highway||
+               r.configuredBoard!=stereoAtlasViews.board||r.configuredBoardSampler!=stereoAtlasViews.boardSampler){
+                VkDescriptorImageInfo images[3]={
+                    {stereoAtlasViews.boardSampler,stereoAtlasViews.board,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
                     {r.sampler,stereoAtlasViews.highway,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
                     {r.sampler,stereoAtlasViews.guitar,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}};
-                VkWriteDescriptorSet writes[2]{};
-                const VkDescriptorSet sets[2]={r.highwaySet,r.guitarSet};
-                for(int j=0;j<2;++j){
+                VkWriteDescriptorSet writes[3]{};
+                const VkDescriptorSet sets[3]={r.boardSet,r.highwaySet,r.guitarSet};
+                for(int j=0;j<3;++j){
                     writes[j].sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[j].dstSet=sets[j];writes[j].dstBinding=0;
                     writes[j].descriptorCount=1;
                     writes[j].descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                     writes[j].pImageInfo=&images[j];
                 }
-                vkUpdateDescriptorSets(device,2,writes,0,nullptr);
+                vkUpdateDescriptorSets(device,3,writes,0,nullptr);
                 r.configuredHighway=stereoAtlasViews.highway;
                 r.configuredGuitar=stereoAtlasViews.guitar;
+                r.configuredBoard=stereoAtlasViews.board;
+                r.configuredBoardSampler=stereoAtlasViews.boardSampler;
             }
         }else if(!stereoHighwayGeometry(live,screen,eyes,verts,stereo))
             throw std::runtime_error("invalid stereo chart geometry");
@@ -335,9 +341,9 @@ struct CinemaRenderer {
             if(sourceActive){
                 // In active five-fret gameplay the flat source is not displayed.
                 vkCmdBindPipeline(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.atlasPipeline);
-                for(int kind=0;kind<2;++kind){
+                for(int kind=0;kind<3;++kind){
                     if(!sourceDraw.count[i][kind])continue;
-                    const VkDescriptorSet atlas=kind==0?r.highwaySet:r.guitarSet;
+                    const VkDescriptorSet atlas=kind==0?r.boardSet:kind==1?r.highwaySet:r.guitarSet;
                     vkCmdBindDescriptorSets(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.layout,0,1,&atlas,0,nullptr);
                     vkCmdDraw(r.cmd,sourceDraw.count[i][kind],1,sourceDraw.first[i][kind],0);
                 }
@@ -529,8 +535,8 @@ bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue q
         const auto live=encoreCinemaReadHighway();
         native.renderer->render(image,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,*native.screen,eyes,live);
         if(live.active&&(id==1||id%300==0))
-            say("VR_STEREO live_gems=%u source_highway=%zu source_guitar=%zu",
-                live.count,live.highway.size(),live.guitar.size());
+            say("VR_STEREO live_gems=%u source_board=%zu source_highway=%zu source_guitar=%zu",
+                live.count,live.board.size(),live.highway.size(),live.guitar.size());
         psvr2_note_gpu(psvr2_now_us()-gpu);
         if(native.frame){
             uint64_t latest=0;int rc=psvr2_cinema_flip(&latest);
