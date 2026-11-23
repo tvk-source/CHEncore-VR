@@ -45,7 +45,12 @@ int main(){
         textured.highway.push_back(h);
         StereoSourceVertex g=h;
         g.pos[1]=.2f;g.color[0]=.4f;g.color[3]=.75f;
+        g.uvNext[0]=.7f;g.uvNext[1]=.8f;g.frameBlend=.45f;
         textured.guitar.push_back(g);
+        StereoSourceVertex fx=g;fx.frameBlend=-1.25f;
+        textured.effects.push_back(fx);
+        StereoSourceVertex tail=g;tail.frameBlend=0.f;
+        textured.sustain.push_back(tail);
     }
     for(int i=0;i<3;++i){
         StereoSourceVertex v{};
@@ -57,13 +62,18 @@ int main(){
     std::vector<CinemaVertex> texturedVerts(12);
     StereoSourceDraw source{};
     assert(stereoSourceGeometry(textured,*screen,eyes,texturedVerts,source));
-    assert(source.count[0][0]==3&&source.count[0][1]==3&&source.count[0][2]==3);
-    assert(source.count[1][0]==3&&source.count[1][1]==3&&source.count[1][2]==3);
-    assert(texturedVerts[source.first[0][2]].color[0]==.4f);
-    assert(texturedVerts[source.first[0][2]].color[3]==.75f);
-    assert(texturedVerts[source.first[0][2]].u==0.f);
-    const auto& a=texturedVerts[source.first[0][2]];
-    const auto& b=texturedVerts[source.first[1][2]];
+    for(int eye=0;eye<2;++eye){
+        for(int kind=0;kind<5;++kind)assert(source.count[eye][kind]==3);
+    }
+    assert(texturedVerts[source.first[0][3]].color[0]==.4f);
+    assert(texturedVerts[source.first[0][3]].color[3]==.75f);
+    assert(texturedVerts[source.first[0][3]].u==0.f);
+    assert(texturedVerts[source.first[0][3]].uvNext[0]==.7f);
+    assert(texturedVerts[source.first[0][3]].uvNext[1]==.8f);
+    assert(texturedVerts[source.first[0][3]].frameBlend==.45f);
+    assert(texturedVerts[source.first[0][4]].frameBlend==-1.25f);
+    const auto& a=texturedVerts[source.first[0][3]];
+    const auto& b=texturedVerts[source.first[1][3]];
     assert(std::abs(a.clip[0]/a.clip[3]-b.clip[0]/b.clip[3])>.005f);
     // Alpha 6: the far tip must fill the upper part of the world-space
     // board rather than ending half-way up the view.
@@ -74,6 +84,18 @@ int main(){
     const auto farPoint=stereoSourceLocal(far,textured.sourceFar);
     assert(farPoint.y-nearPoint.y>1.25f);
     assert(farPoint.z<nearPoint.z);
+    // The original rounded sprites should no longer be 4x vertically
+    // squashed relative to their width. This tests local sprite scale,
+    // independent of the neck's separate along-track perspective.
+    StereoSourceVertex p{};
+    const auto center=stereoSourceLocal(p,textured.sourceFar);
+    p.pos[0]=1.f;
+    const auto dx=stereoSourceLocal(p,textured.sourceFar);
+    p.pos[0]=0.f;p.pos[1]=1.f;
+    const auto dy=stereoSourceLocal(p,textured.sourceFar);
+    const float sx=dx.x-center.x;
+    const float sy=dy.y-center.y;
+    assert(sx>.30f&&sy>.25f&&sy/sx>.80f&&sy/sx<1.1f);
     // Alpha 6 HUD: original game pixels projected only into left/right
     // peripheral panels, not into a second flat gameplay screen.
     CinemaHudPanel leftHud{-1.48f,-.83f,-.71f,.47f,-.06f,0.f,.08f,.29f,.94f};
@@ -93,5 +115,5 @@ int main(){
     assert(!cinemaHudPanelVertices(*screen,eyes[0],rightHud));
     textured.sourceFar=0.f;
     assert(!stereoSourceGeometry(textured,*screen,eyes,texturedVerts,source));
-    std::puts("STEREO_HIGHWAY_TEST PASS full-height track, original UV/tint, stereo HUD crops, binocular depth, invalid input");
+    std::puts("STEREO_HIGHWAY_TEST PASS round sprite proportions, note animation, real tails/FX, stereo HUD, binocular depth");
 }
