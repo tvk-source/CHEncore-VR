@@ -8331,7 +8331,7 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
         if (!prepareTextures()) { quit=true; return; }
 #if defined(ENCORE_VR_CINEMA)
         // Game-owned original PC atlas images: GPU read-only in stereo.
-        ::encoreCinemaSetAtlasViews(atlasTex.view,highwayTex.view);
+        ::encoreCinemaSetAtlasViews(atlasTex.view,highwayTex.view,boardTex.view,boardTex.sampler);
 #endif
         buildGeometry();
         prepareUniformBuffers();
@@ -8622,7 +8622,6 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
                     output.push_back(copy);
                 }
             }
-            encore::vr::encoreCinemaPublishHighway(vrSourceFrame);
         }
 #endif
         buildSustainFrame(sustainScratch);
@@ -8630,6 +8629,20 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
         if (!tv.empty())
             memcpy(texBuffers[currentBuffer].mapped, tv.data(), tv.size() * sizeof(TexVertex));
         auto& bv = boardScratch; buildBoardFrame(bv);
+#if defined(ENCORE_VR_CINEMA)
+        if(seat==primaryGameplaySeat&&vrSourceFrame.active){
+            for(const auto& v:bv){
+                encore::vr::StereoSourceVertex copy{};
+                for(int k=0;k<3;++k)copy.pos[k]=v.pos[k];
+                for(int k=0;k<2;++k)copy.uv[k]=v.uv[k];
+                for(int k=0;k<4;++k)copy.color[k]=v.color[k];
+                vrSourceFrame.board.push_back(copy);
+            }
+            // Publish together with the original board and guitar sprite data,
+            // after gameplay and rendering have selected the same song frame.
+            encore::vr::encoreCinemaPublishHighway(vrSourceFrame);
+        }
+#endif
         memcpy(boardBuffers[currentBuffer].mapped, bv.data(), bv.size() * sizeof(TexVertex));
         }
         selectGameplaySeat(primaryGameplaySeat);
