@@ -32,5 +32,33 @@ int main(){
     assert(!stereoHighwayGeometry(frame,*screen,eyes,vertices,draw));
     frame.notes[0].lane=0;frame.count=kStereoHighwayNotes+1;vertices.clear();
     assert(!stereoHighwayGeometry(frame,*screen,eyes,vertices,draw));
-    std::puts("STEREO_HIGHWAY_TEST PASS live gems, five lanes, left/right depth, invalid-note rejection");
+    // Alpha 5: original source sprite UV/tint must survive independently
+    // projected left/right eye geometry, with no flat screen quad required.
+    StereoHighwayFrame textured{};
+    textured.active=true;
+    textured.sourceFar=39.35f;
+    for(int i=0;i<3;++i){
+        StereoSourceVertex h{};
+        h.pos[0]=-.6f+float(i)*.6f;
+        h.pos[2]=-12.f;
+        h.uv[0]=float(i)*.1f;h.uv[1]=.3f;
+        textured.highway.push_back(h);
+        StereoSourceVertex g=h;
+        g.pos[1]=.2f;g.color[0]=.4f;g.color[3]=.75f;
+        textured.guitar.push_back(g);
+    }
+    std::vector<CinemaVertex> texturedVerts(12);
+    StereoSourceDraw source{};
+    assert(stereoSourceGeometry(textured,*screen,eyes,texturedVerts,source));
+    assert(source.count[0][0]==3&&source.count[0][1]==3);
+    assert(source.count[1][0]==3&&source.count[1][1]==3);
+    assert(texturedVerts[source.first[0][1]].color[0]==.4f);
+    assert(texturedVerts[source.first[0][1]].color[3]==.75f);
+    assert(texturedVerts[source.first[0][1]].u==0.f);
+    const auto& a=texturedVerts[source.first[0][1]];
+    const auto& b=texturedVerts[source.first[1][1]];
+    assert(std::abs(a.clip[0]/a.clip[3]-b.clip[0]/b.clip[3])>.005f);
+    textured.sourceFar=0.f;
+    assert(!stereoSourceGeometry(textured,*screen,eyes,texturedVerts,source));
+    std::puts("STEREO_HIGHWAY_TEST PASS live gems, original UV/tint, source geometry, binocular depth, invalid input");
 }
