@@ -8331,7 +8331,7 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
         if (!prepareTextures()) { quit=true; return; }
 #if defined(ENCORE_VR_CINEMA)
         // Game-owned original PC atlas images: GPU read-only in stereo.
-        ::encoreCinemaSetAtlasViews(atlasTex.view,highwayTex.view,boardTex.view,boardTex.sampler);
+        ::encoreCinemaSetAtlasViews(atlasTex.view,highwayTex.view,boardTex.view,boardTex.sampler,guitarFxTex.view);
 #endif
         buildGeometry();
         prepareUniformBuffers();
@@ -8479,6 +8479,17 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
         encore::vr::encoreCinemaPublishHighway({});
 #endif
         updateGameplay();
+#if defined(ENCORE_VR_CINEMA)
+        // Check real Encore chart judgments, independently of raw bridge edges.
+        if(vrSourceFrame.active){
+            static unsigned lastLoggedHits=0,lastLoggedMisses=0;
+            if(hits!=lastLoggedHits||misses!=lastLoggedMisses){
+                say("VR_JUDGE hits=%u misses=%u combo=%u score=%llu",
+                    hits,misses,combo,static_cast<unsigned long long>(score));
+                lastLoggedHits=hits;lastLoggedMisses=misses;
+            }
+        }
+#endif
         profileUpdateMs=(now_seconds()-frameStart)*1000.;
         if(ps5.frameBudget && (multiplayerQa || (multiplayerQaLibraryLoaded && gameplaySeatMask)) && (multiplayerQaReplay || ps5.framesDrawn%15==0)) {
             if(FILE* trace=std::fopen("/app0/multiplayer-test.txt",ps5.framesDrawn<=10?"w":"a")) {
@@ -8609,8 +8620,9 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
             for(const auto& d:spriteDraws){
                 const bool guitar=d.kind==GameplayDrawKind::Atlas;
                 const bool highway=d.kind==GameplayDrawKind::Highway;
-                if(!guitar&&!highway)continue;
-                auto& output=guitar?vrSourceFrame.guitar:vrSourceFrame.highway;
+                const bool effects=d.kind==GameplayDrawKind::GuitarFx;
+                if(!guitar&&!highway&&!effects)continue;
+                auto& output=guitar?vrSourceFrame.guitar:highway?vrSourceFrame.highway:vrSourceFrame.effects;
                 if(d.count%3||d.first>tv.size()||d.count>tv.size()-d.first||
                    output.size()+d.count>encore::vr::kStereoAssetMaxVertices)continue;
                 for(uint32_t i=0;i<d.count;++i){
@@ -8619,12 +8631,27 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
                     for(int k=0;k<3;++k)copy.pos[k]=v.pos[k];
                     for(int k=0;k<2;++k)copy.uv[k]=v.uv[k];
                     for(int k=0;k<4;++k)copy.color[k]=v.color[k];
+                    for(int k=0;k<2;++k)copy.uvNext[k]=v.uvNext[k];
+                    copy.frameBlend=v.frameBlend;
                     output.push_back(copy);
                 }
             }
         }
 #endif
         buildSustainFrame(sustainScratch);
+#if defined(ENCORE_VR_CINEMA)
+        if(seat==primaryGameplaySeat&&vrSourceFrame.active &&
+           sustainScratch.size()<=encore::vr::kStereoAssetMaxVertices){
+            for(const auto& v:sustainScratch){
+                encore::vr::StereoSourceVertex copy{};
+                for(int k=0;k<3;++k)copy.pos[k]=v.pos[k];
+                for(int k=0;k<2;++k){copy.uv[k]=v.uv[k];copy.uvNext[k]=v.uvNext[k];}
+                for(int k=0;k<4;++k)copy.color[k]=v.color[k];
+                copy.frameBlend=v.frameBlend;
+                vrSourceFrame.sustain.push_back(copy);
+            }
+        }
+#endif
         if (!sustainScratch.empty()) memcpy(sustainBuffers[currentBuffer].mapped, sustainScratch.data(), sustainScratch.size()*sizeof(TexVertex));
         if (!tv.empty())
             memcpy(texBuffers[currentBuffer].mapped, tv.data(), tv.size() * sizeof(TexVertex));
@@ -8636,6 +8663,8 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
                 for(int k=0;k<3;++k)copy.pos[k]=v.pos[k];
                 for(int k=0;k<2;++k)copy.uv[k]=v.uv[k];
                 for(int k=0;k<4;++k)copy.color[k]=v.color[k];
+                for(int k=0;k<2;++k)copy.uvNext[k]=v.uvNext[k];
+                copy.frameBlend=v.frameBlend;
                 vrSourceFrame.board.push_back(copy);
             }
             // Publish together with the original board and guitar sprite data,
