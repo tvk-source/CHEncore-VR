@@ -159,7 +159,10 @@ struct CinemaRenderer {
         r.image(r.target,VK_FORMAT_R8G8B8A8_UNORM,{width,height},VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT|VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
 
 #if defined(ENCORE_VR_CINEMA)
-        r.buffer(r.vertices,sizeof(CinemaVertex)*(12+kStereoHighwayMaxVertices+6*kStereoAssetMaxVertices),VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
+        // Source sprites: three atlases per eye. HUD: two cropped, original
+        // peripheral gameplay UI panels per eye (4 panels * 6 vertices).
+        r.buffer(r.vertices,sizeof(CinemaVertex)*(12+6*kStereoAssetMaxVertices+24),
+                 VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 #else
         r.buffer(r.vertices,sizeof(CinemaVertex)*12,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 #endif
@@ -277,7 +280,9 @@ struct CinemaRenderer {
                 const Eye (&eyes)[2],const StereoHighwayFrame& live){
         std::vector<CinemaVertex> verts(12);
 #if defined(ENCORE_VR_CINEMA)
+
         StereoSourceDraw sourceDraw{};
+        uint32_t hudFirst[2]{},hudCount[2]{};
         const bool sourceActive=live.active&&!live.board.empty()&&!live.highway.empty()&&!live.guitar.empty()&&
             stereoAtlasViews.guitar&&stereoAtlasViews.highway&&stereoAtlasViews.board&&stereoAtlasViews.boardSampler;
         if(sourceActive){
@@ -303,6 +308,26 @@ struct CinemaRenderer {
                 r.configuredGuitar=stereoAtlasViews.guitar;
                 r.configuredBoard=stereoAtlasViews.board;
                 r.configuredBoardSampler=stereoAtlasViews.boardSampler;
+            }
+            // Native gameplay has additional UI rendered by Encore's meter
+            // pipeline and ImGui, not by the guitar/highway texture atlases.
+            // Keep these existing dynamic pixels by projecting ONLY the two
+            // peripheral HUD regions. The centre screen/gameplay is omitted.
+            // Crops are proportional to Encore's original 16:9 output:
+            // health/SP left; animated score/stars/song-progress right.
+            // The board remains purely source-geometry stereo.
+            const CinemaHudPanel hudPanels[2]={
+                { -1.48f,-.83f,-.71f,.47f,-.06f, .00f,.08f,.29f,.94f },
+                {  .83f,1.48f,-.71f,.47f,-.06f, .71f,.08f,1.00f,.94f }
+            };
+            for(int eye=0;eye<2;++eye){
+                hudFirst[eye]=static_cast<uint32_t>(verts.size());
+                for(const auto& panel:hudPanels){
+                    const auto quad=cinemaHudPanelVertices(screen,eyes[eye],panel);
+                    if(!quad)throw std::runtime_error("invalid stereo HUD projection");
+                    verts.insert(verts.end(),quad->begin(),quad->end());
+                }
+                hudCount[eye]=static_cast<uint32_t>(verts.size())-hudFirst[eye];
             }
         } // If source geometry is unavailable, use cinema-only (no Alpha 4 overlay).
 #endif
@@ -340,6 +365,14 @@ struct CinemaRenderer {
                     const VkDescriptorSet atlas=kind==0?r.boardSet:kind==1?r.highwaySet:r.guitarSet;
                     vkCmdBindDescriptorSets(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.layout,0,1,&atlas,0,nullptr);
                     vkCmdDraw(r.cmd,sourceDraw.count[i][kind],1,sourceDraw.first[i][kind],0);
+                }
+                // Draw real PC HUD pixels on two independent side panels.
+                // No duplicate game screen, score reconstruction or second
+                // synthetic song clock. Menus still use the ordinary cinema.
+                if(hudCount[i]){
+                    vkCmdBindPipeline(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.pipeline);
+                    vkCmdBindDescriptorSets(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.layout,0,1,&r.set,0,nullptr);
+                    vkCmdDraw(r.cmd,hudCount[i],1,hudFirst[i],0);
                 }
             }else{
 #endif
@@ -525,7 +558,7 @@ bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue q
         const auto live=encoreCinemaReadHighway();
         native.renderer->render(image,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,*native.screen,eyes,live);
         if(live.active&&(id==1||id%300==0))
-            say("VR_STEREO mode=%s live_gems=%u source_board=%zu source_highway=%zu source_guitar=%zu",
+            say("VR_STEREO mode=%s hud=PC_SIDE_PANELS live_gems=%u source_board=%zu source_highway=%zu source_guitar=%zu",
                 !live.board.empty()&&!live.highway.empty()&&!live.guitar.empty()&&
                   stereoAtlasViews.guitar&&stereoAtlasViews.highway&&stereoAtlasViews.board&&
                   stereoAtlasViews.boardSampler?"SOURCE_ATLAS":"CINEMA_FALLBACK",
