@@ -557,12 +557,15 @@ bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue q
         const uint64_t gpu=psvr2_now_us();
         const auto live=encoreCinemaReadHighway();
         native.renderer->render(image,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,*native.screen,eyes,live);
-        if(live.active&&(id==1||id%300==0))
-            say("VR_STEREO mode=%s hud=PC_SIDE_PANELS live_gems=%u source_board=%zu source_highway=%zu source_guitar=%zu",
-                !live.board.empty()&&!live.highway.empty()&&!live.guitar.empty()&&
-                  stereoAtlasViews.guitar&&stereoAtlasViews.highway&&stereoAtlasViews.board&&
-                  stereoAtlasViews.boardSampler?"SOURCE_ATLAS":"CINEMA_FALLBACK",
+        if(live.active&&(id==1||id%300==0)){
+            const bool atlasReady=!live.board.empty()&&!live.highway.empty()&&!live.guitar.empty()&&
+                stereoAtlasViews.guitar&&stereoAtlasViews.highway&&stereoAtlasViews.board&&
+                stereoAtlasViews.boardSampler;
+            say("VR_STEREO mode=%s hud=%s live_gems=%u source_board=%zu source_highway=%zu source_guitar=%zu",
+                atlasReady?"SOURCE_ATLAS":"CINEMA_FALLBACK",
+                atlasReady?"PC_SIDE_PANELS":"CINEMA",
                 live.count,live.board.size(),live.highway.size(),live.guitar.size());
+        }
         psvr2_note_gpu(psvr2_now_us()-gpu);
         if(native.frame){
             uint64_t latest=0;int rc=psvr2_cinema_flip(&latest);
