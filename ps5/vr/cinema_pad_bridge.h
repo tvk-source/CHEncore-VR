@@ -7,14 +7,14 @@
 #include "ghost/psvr2.h"
 #include "../src/platform.h"
 static inline uint8_t encore_cinema_axis(float v, int invert) {
-    if (!isfinite(v)) return 128;
+    if (!__builtin_isfinite(v)) return 128;
     if (v > 1.f) v=1.f;
     if (v < -1.f) v=-1.f;
     float x=128.f+(invert?-127.f:127.f)*v;
     return (uint8_t)(x<0?0:x>255?255:(int)(x+.5f));
 }
 static inline uint8_t encore_cinema_trigger(float v) {
-    if (!isfinite(v)||v<0.f)return 0;
+    if (!__builtin_isfinite(v)||v<0.f)return 0;
     if(v>1.f)v=1.f;
     return (uint8_t)(v*255.f+.5f);
 }

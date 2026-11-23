@@ -46,6 +46,10 @@ int main(void){
     r=neutral();assert(!encore_cinema_merge(&in,&r));
     assert(encore_cinema_axis(NAN,0)==128);
     assert(encore_cinema_trigger(NAN)==0);
+    assert(encore_cinema_axis(INFINITY,0)==128);
+    assert(encore_cinema_axis(-INFINITY,1)==128);
+    assert(encore_cinema_trigger(INFINITY)==0);
+    assert(encore_cinema_trigger(-INFINITY)==0);
     assert(encore_cinema_axis(2.f,0)==255);
     puts("CINEMA_PAD_TEST PASS left Red/Blue, right Green/Yellow, grip Orange, analog, menus, original-pad merge");
     return 0;
