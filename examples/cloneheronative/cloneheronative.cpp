@@ -427,6 +427,15 @@ public:
     // PC per-stem volume defaults: guitar, bass, rhythm, vocals, drums, keys, crowd.
     std::array<float, 7> instrumentVolumes{{ 1, 1, 1, 1, 1, 1, 1 }};
     float menuScale{ 1.0f }, rumbleStrength{ 0.65f };
+#if defined(ENCORE_VR_CINEMA)
+    // ImGui's PC glyph bitmaps were rasterized for 1080p. Upscaling them
+    // to the 1440p offscreen game target makes text blurry even if the
+    // headset eye output is larger. Rasterize at target/source scale,
+    // then compensate the default window font scale to preserve layout.
+    static constexpr float cinemaFontRaster=float(ENCORE_CINEMA_SOURCE_HEIGHT)/1080.f;
+#else
+    static constexpr float cinemaFontRaster=1.f;
+#endif
     // 0 follows presentation pacing; 1 and 2 cap submissions at 60 and 120.
     int frameRateLimit{ 0 };
     rhythm::DisplayTiming displayTiming;
@@ -8255,14 +8264,14 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
 #endif
         overlayFontPath = rhythm::assets::currentRoot() + "pc_menu/Lato-Regular.ttf";
         overlayFontSize = 22.0f;
-        gameplayNameFont=ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-BoldItalic.ttf").c_str(),pc_gameplay_labels::nameSize);
-        countdownFont=ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Heavy.ttf").c_str(),pc_gameplay_labels::countdownMaxSize);
-        resultsBoldFont=ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Bold.ttf").c_str(),39.0f);
-        playerNameFont = ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Regular.ttf").c_str(),50.0f);
-        songHeadingFont = ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Semibold.ttf").c_str(),50.0f);
-        pauseHeadingFont = ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Light.ttf").c_str(), 100.0f);
-        settingsFont = ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Light.ttf").c_str(), 36.0f);
-        ratingFont = ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Semibold.ttf").c_str(), 24.0f);
+        gameplayNameFont=ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-BoldItalic.ttf").c_str(),pc_gameplay_labels::nameSize*cinemaFontRaster);
+        countdownFont=ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Heavy.ttf").c_str(),pc_gameplay_labels::countdownMaxSize*cinemaFontRaster);
+        resultsBoldFont=ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Bold.ttf").c_str(),39.0f*cinemaFontRaster);
+        playerNameFont = ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Regular.ttf").c_str(),50.0f*cinemaFontRaster);
+        songHeadingFont = ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Semibold.ttf").c_str(),50.0f*cinemaFontRaster);
+        pauseHeadingFont = ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Light.ttf").c_str(), 100.0f*cinemaFontRaster);
+        settingsFont = ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Light.ttf").c_str(), 36.0f*cinemaFontRaster);
+        ratingFont = ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Semibold.ttf").c_str(), 24.0f*cinemaFontRaster);
         inspectOutputResolution();
         VulkanExampleBase::prepare();
         inspectDisplayTiming();
@@ -8597,7 +8606,7 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
         ImGui::SetNextWindowPos(ImVec2(0, 0));
         ImGui::SetNextWindowSize(io.DisplaySize);
         ImGui::Begin("##clonehero_pc_menu", nullptr, flags);
-        ImGui::SetWindowFontScale(scale);
+        ImGui::SetWindowFontScale(scale/cinemaFontRaster);
         ImDrawList* draw = ImGui::GetWindowDrawList();
         // Draw modal contents above all ordinary UI, with one extra 10% dim.
         // Per-player profile/remap panels stay non-modal and independent.

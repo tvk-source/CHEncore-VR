@@ -224,3 +224,10 @@ Host screenshot reference is unchanged at 1024x1024 per eye.
 The five-minute stop, firmware 7.61 gate, unmodified native V12 probe,
 no-distribution personal assets and fail-closed retirement heuristics
 remain mandatory. Revert if any visual instability appears.
+
+The ImGui fonts were also rasterized at their 1080p nominal sizes in
+Alpha 2. At the new 1440p source resolution, those glyph bitmaps would
+otherwise be stretched 1.333x. All eight Lato fonts are now rasterized
+at the source pixel scale; only the window's implicit default font scale
+is compensated to preserve existing menu geometry. Explicit font sizes
+remain in the source-space layout. Host/probe still use a scale of 1.0.
