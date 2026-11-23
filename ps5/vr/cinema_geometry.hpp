@@ -12,6 +12,8 @@ struct CinemaVertex {
     float u{},v{};
     // Optional original sprite tint. The ordinary cinema remains white.
     float color[4]{1.f,1.f,1.f,1.f};
+    float uvNext[2]{};
+    float frameBlend{};
 };
 inline bool validTrackedPose(Pose p) {
     const auto q=p.rot;
