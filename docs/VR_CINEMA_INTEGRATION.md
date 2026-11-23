@@ -239,3 +239,47 @@ right B blue/Triangle, right grip orange/L1. Left grip R1 is reserved
 and may control a separate action. The tiny shared debug/UI font (22px)
 now rasterizes at native source scale as well. Other small labels may still
 come from low-resolution imported bitmaps; they are not magically recreated.
+
+## Alpha 4: first real binocular/stereoscopic note highway
+The PS5 FW 7.61 headset hardware test for Alpha 3 confirmed that
+RegisterBuffers2 3840x1920 x4 succeeds, source 2560x1440 / eye 1920x1920,
+with repeated 60 fps windows (120 Hz output, queue-full 0, errors 0 and
+3.6–3.8 ms reported compositor GPU). Headset removal produced expected
+VR_CINEMA STOP; later CRASH KILL_END shell lines alone do not establish
+a rendering crash.
+
+Alpha 4 fixes the user-corrected five-fret physical order:
+G R Y B O, with left Sense X/Y -> G/R, right Sense A/B/grip -> Y/B/O.
+The tiny framework overlay font also gets scaled at source 1440p.
+Any text baked into imported bitmap textures retains its own pixel limit.
+
+The first actual 3D rendering pass is on the original native PS5 chart
+path. The game's existing visible note-list (same audio-calibrated render
+clock, hit/missed state, sustain length and 5-fret lane) publishes bounded
+snapshots, never game assets or decoded audio. A fixed-size 96-note
+snapshot is copied under a short mutex. Native compositor builds a solid
+3D five-lane inclined stage, strike-zone receptors, rails, beat markers,
+sustain tails and actual upcoming chart gems (bounded 2.25-second lead),
+then projects each physical world vertex through the separate tracked
+left/right-eye view and FOV. A separate shader/pipeline colors the notes.
+The original source game is still rendered underneath: its menus,
+scoreboard, pause, chart evaluator and audio continue working unchanged.
+The 3D stage exists ONLY during unpaused five-fret gameplay, not in menus.
+This is an experimental stereo overlay, NOT yet a full 3D replacement of
+the original 2D highway, proper mutual occlusion or a textured concert
+environment. Drum and six-fret charts continue using cinema mode.
+
+The stage is placed in front of the virtual menu screen and stays world
+anchored to the same recenter origin. Stereo drawing is performed on the
+existing Vulkan queue and existing linear PSVR2 output buffers, with the
+same buffer-age heuristic, bounded GPU fence and five-minute alpha limit.
+Hardware timing, note alignments and visibility have not yet been
+validated. Each gameplay session now reports:
+    VR_STEREO chart_3d active live_gems=<N>
+every 300 frames when the live 3D stage is active. No such line means the
+first 3D chart path is not being entered; do not claim it is working.
+Stop and restore Alpha 3 if buffer registration, geometry validation or
+visual stability fails. The native package requires a new
+shaders/cinema/highway3d.frag.spv in addition to the existing two
+cinema shader files. New pre-build CPU tests assert five-lane geometry,
+live note bounds, and distinct eye parallax without console hardware.
