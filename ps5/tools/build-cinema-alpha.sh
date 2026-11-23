@@ -29,7 +29,7 @@ done
 # that prefix in klog is insufficient evidence that deployment was updated.
 native_elf="$root/build/ps5-vr-cinema/link/llvm-pie.elf"
 [[ -s "$native_elf" ]] || { echo "Missing linked native engine: $native_elf" >&2; exit 1; }
-if ! LC_ALL=C grep -aqF 'VR_BUILD_ALPHA5_ATLAS_STEREO' "$native_elf"; then
+if ! LC_ALL=C grep -aqF 'VR_BUILD_ALPHA6_STEREO_HUD' "$native_elf"; then
     echo "ERROR: native ELF lacks the Alpha 5 identity marker. Refusing stale deployment." >&2
     exit 1
 fi
