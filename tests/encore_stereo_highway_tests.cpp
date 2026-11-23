@@ -95,7 +95,7 @@ int main(){
     const auto dy=stereoSourceLocal(p,textured.sourceFar);
     const float sx=dx.x-center.x;
     const float sy=dy.y-center.y;
-    assert(sx>.30f&&sy>.25f&&sy/sx>.80f&&sy/sx<1.1f);
+    assert(sx>.30f&&sy>.65f&&sy/sx>1.9f&&sy/sx<2.1f);
     // Alpha 6 HUD: original game pixels projected only into left/right
     // peripheral panels, not into a second flat gameplay screen.
     CinemaHudPanel leftHud{-1.48f,-.83f,-.71f,.47f,-.06f,0.f,.08f,.29f,.94f};
