@@ -64,6 +64,7 @@ if [[ $cinema == ON ]]; then
     for stage in vert frag; do
         glslangValidator -V --target-env vulkan1.3 "$ps5/vr/shaders/atlas.$stage" -o "$app/shaders/cinema/atlas.$stage.spv"
     done
+    glslangValidator -V --target-env vulkan1.3 "$ps5/vr/shaders/hud.frag" -o "$app/shaders/cinema/hud.frag.spv"
     pack=${ENCORE_ASSET_PACK:-$root/local-assets/EncoreAssets-v1.encore-assets}
     [[ -s $pack ]] || { echo "Missing personal asset pack: $pack" >&2; exit 2; }
     cp -- "$pack" "$app/assets/EncoreAssets-v1.encore-assets"
