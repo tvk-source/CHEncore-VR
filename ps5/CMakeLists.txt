@@ -175,7 +175,21 @@ if(ENCORE_VR_PROBE OR ENCORE_VR_CINEMA)
 endif()
 if(ENCORE_VR_CINEMA)
     target_sources(samples PRIVATE vr/cinema_reference.cpp)
-    target_compile_definitions(samples PRIVATE ENCORE_VR_CINEMA=1 ENCORE_CINEMA_EYE_PIXELS=${ENCORE_CINEMA_EYE_PIXELS} ENCORE_CINEMA_SOURCE_HEIGHT=${ENCORE_CINEMA_SOURCE_HEIGHT})
+    # Always report the revision actually used by the native build, not the
+    # revision of a similarly named staging directory.
+    execute_process(
+        COMMAND git -C "${ROOT}" rev-parse --short=12 HEAD
+        OUTPUT_VARIABLE ENCORE_VR_SOURCE_REV
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET)
+    if(NOT ENCORE_VR_SOURCE_REV)
+        set(ENCORE_VR_SOURCE_REV "unknown")
+    endif()
+    target_compile_definitions(samples PRIVATE
+        ENCORE_VR_CINEMA=1
+        ENCORE_CINEMA_EYE_PIXELS=${ENCORE_CINEMA_EYE_PIXELS}
+        ENCORE_CINEMA_SOURCE_HEIGHT=${ENCORE_CINEMA_SOURCE_HEIGHT}
+        "ENCORE_VR_SOURCE_REV=\"${ENCORE_VR_SOURCE_REV}\"")
 endif()
 target_compile_definitions(samples PRIVATE
 	VK_EXAMPLE_PS5
