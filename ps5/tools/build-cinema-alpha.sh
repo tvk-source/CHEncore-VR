@@ -24,17 +24,17 @@ app="$root/dist-vr-cinema/PPSA98743"
 for item in eboot.bin sce_module/encore-engine.prx sce_sys/param.json shaders/cinema/cinema.vert.spv shaders/cinema/cinema.frag.spv shaders/cinema/atlas.vert.spv shaders/cinema/atlas.frag.spv assets/EncoreAssets-v1.encore-assets; do
     [[ -s "$app/$item" ]] || { echo "Missing alpha file: $item" >&2; exit 1; }
 done
-# Confirm that the native link genuinely contains the current Alpha 5
+# Confirm that the native link genuinely contains the current Alpha 6
 # renderer. The old Alpha 4 binary also has VR_STEREO logs, so merely seeing
 # that prefix in klog is insufficient evidence that deployment was updated.
 native_elf="$root/build/ps5-vr-cinema/link/llvm-pie.elf"
 [[ -s "$native_elf" ]] || { echo "Missing linked native engine: $native_elf" >&2; exit 1; }
 if ! LC_ALL=C grep -aqF 'VR_BUILD_ALPHA6_STEREO_HUD' "$native_elf"; then
-    echo "ERROR: native ELF lacks the Alpha 5 identity marker. Refusing stale deployment." >&2
+    echo "ERROR: native ELF lacks the Alpha 6 identity marker. Refusing stale deployment." >&2
     exit 1
 fi
-printf '\n==> Alpha 5 source revision: %s\n' "$(git rev-parse --short=12 HEAD)"
-echo "==> Native Alpha 5 identity marker: PASS"
+printf '\n==> Alpha 6 source revision: %s\n' "$(git rev-parse --short=12 HEAD)"
+echo "==> Native Alpha 6 identity marker: PASS"
 echo "==> Staged files to deploy together:"
 sha256sum "$app/eboot.bin" "$app/sce_module/encore-engine.prx" \
     "$app/shaders/cinema/atlas.vert.spv" "$app/shaders/cinema/atlas.frag.spv"
