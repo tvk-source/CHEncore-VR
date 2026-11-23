@@ -47,8 +47,8 @@ struct Resources {
     VkDescriptorSet set{};VkPipelineLayout layout{};VkRenderPass pass{};
     VkFramebuffer framebuffer{};VkPipeline pipeline{};VkShaderModule vert{},frag{};
 #if defined(ENCORE_VR_CINEMA)
-    VkPipeline stereoPipeline{},atlasPipeline{};
-    VkShaderModule stereoFrag{},atlasVert{},atlasFrag{};
+    VkPipeline atlasPipeline{};
+    VkShaderModule atlasVert{},atlasFrag{};
     VkDescriptorSet guitarSet{},highwaySet{},boardSet{};
     VkImageView configuredGuitar{},configuredHighway{},configuredBoard{};
     VkSampler configuredBoardSampler{};
@@ -63,9 +63,7 @@ struct Resources {
         if(cmdPool)vkDestroyCommandPool(d,cmdPool,nullptr);
         if(pipeline)vkDestroyPipeline(d,pipeline,nullptr);
 #if defined(ENCORE_VR_CINEMA)
-        if(stereoPipeline)vkDestroyPipeline(d,stereoPipeline,nullptr);
         if(atlasPipeline)vkDestroyPipeline(d,atlasPipeline,nullptr);
-        if(stereoFrag)vkDestroyShaderModule(d,stereoFrag,nullptr);
         if(atlasVert)vkDestroyShaderModule(d,atlasVert,nullptr);
         if(atlasFrag)vkDestroyShaderModule(d,atlasFrag,nullptr);
 #endif
@@ -252,10 +250,8 @@ struct CinemaRenderer {
         pi.pRasterizationState=&rs;pi.pMultisampleState=&ms;pi.pColorBlendState=&bs;pi.pDynamicState=&ds;pi.layout=r.layout;pi.renderPass=r.pass;
         CHECK(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&pi,nullptr,&r.pipeline));
 #if defined(ENCORE_VR_CINEMA)
-        // Keep the Alpha 4 geometry fallback when no source atlas is published.
-        r.stereoFrag=r.shader(shaders+"/highway3d.frag.spv");
-        stages[1].module=r.stereoFrag;
-        CHECK(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&pi,nullptr,&r.stereoPipeline));
+        // Alpha 4's artificial flat/black overlay is deliberately gone.
+        // Original PC sprite textures are used during native stereo gameplay.
         // Render the original PC sprite UVs with independent eye projections.
         r.atlasVert=r.shader(shaders+"/atlas.vert.spv");
         r.atlasFrag=r.shader(shaders+"/atlas.frag.spv");
@@ -281,7 +277,6 @@ struct CinemaRenderer {
                 const Eye (&eyes)[2],const StereoHighwayFrame& live){
         std::vector<CinemaVertex> verts(12);
 #if defined(ENCORE_VR_CINEMA)
-        StereoHighwayDraw stereo{};
         StereoSourceDraw sourceDraw{};
         const bool sourceActive=live.active&&!live.board.empty()&&!live.highway.empty()&&!live.guitar.empty()&&
             stereoAtlasViews.guitar&&stereoAtlasViews.highway&&stereoAtlasViews.board&&stereoAtlasViews.boardSampler;
@@ -309,8 +304,7 @@ struct CinemaRenderer {
                 r.configuredBoard=stereoAtlasViews.board;
                 r.configuredBoardSampler=stereoAtlasViews.boardSampler;
             }
-        }else if(!stereoHighwayGeometry(live,screen,eyes,verts,stereo))
-            throw std::runtime_error("invalid stereo chart geometry");
+        } // If source geometry is unavailable, use cinema-only (no Alpha 4 overlay).
 #endif
         for(int i=0;i<2;++i){
             auto v=cinemaVertices(screen,eyes[i]);if(!v)throw std::runtime_error("bad eye projection");
@@ -353,10 +347,6 @@ struct CinemaRenderer {
                 vkCmdBindDescriptorSets(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.layout,0,1,&r.set,0,nullptr);
                 vkCmdDraw(r.cmd,6,1,i*6,0);
 #if defined(ENCORE_VR_CINEMA)
-                if(stereo.count[i]){
-                    vkCmdBindPipeline(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.stereoPipeline);
-                    vkCmdDraw(r.cmd,stereo.count[i],1,stereo.first[i],0);
-                }
             }
 #endif
         }
@@ -535,7 +525,10 @@ bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue q
         const auto live=encoreCinemaReadHighway();
         native.renderer->render(image,VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,*native.screen,eyes,live);
         if(live.active&&(id==1||id%300==0))
-            say("VR_STEREO live_gems=%u source_board=%zu source_highway=%zu source_guitar=%zu",
+            say("VR_STEREO mode=%s live_gems=%u source_board=%zu source_highway=%zu source_guitar=%zu",
+                !live.board.empty()&&!live.highway.empty()&&!live.guitar.empty()&&
+                  stereoAtlasViews.guitar&&stereoAtlasViews.highway&&stereoAtlasViews.board&&
+                  stereoAtlasViews.boardSampler?"SOURCE_ATLAS":"CINEMA_FALLBACK",
                 live.count,live.board.size(),live.highway.size(),live.guitar.size());
         psvr2_note_gpu(psvr2_now_us()-gpu);
         if(native.frame){
