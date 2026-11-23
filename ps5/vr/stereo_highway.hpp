@@ -138,21 +138,31 @@ inline bool stereoSourceGeometry(const StereoHighwayFrame& frame,const CinemaScr
         for(int kind=0;kind<5;++kind){
             const auto& source=kind==0?frame.board:kind==1?frame.highway:kind==2?frame.sustain:kind==3?frame.guitar:frame.effects;
             draw.first[eye][kind]=static_cast<uint32_t>(vertices.size());
-            for(const auto& src:source){
-                for(float f:src.pos)if(!std::isfinite(f))return false;
-                for(float f:src.uv)if(!std::isfinite(f))return false;
-                for(float f:src.color)if(!std::isfinite(f))return false;
-                // Reuse the full-scale rising track transform for every
-                // source-authored piece: board, notes, receptors, highway.
-                const Vec local=stereoSourceLocal(src,frame.sourceFar);
-                const Vec world=screen.pose.pos+rotate(screen.pose.rot,local);
-                const auto clip=cinemaTransform(*proj,
-                    cinemaTransform(camera,{world.x,world.y,world.z,1.f}));
-                for(float c:clip)if(!std::isfinite(c))return false;
-                if(clip[3]<.06f)return false;
-                vertices.push_back({clip,src.uv[0],src.uv[1],
-                    {src.color[0],src.color[1],src.color[2],src.color[3]},
-                    {src.uvNext[0],src.uvNext[1]},src.frameBlend});
+            // A flying hit particle may cross behind the headset. Skip only
+            // its triangle instead of aborting the whole VR renderer. Always
+            // preserve original triangle boundaries and valid UV/tint data.
+            if(source.size()%3)return false;
+            for(size_t n=0;n<source.size();n+=3){
+                std::array<CinemaVertex,3> triangle{};
+                bool visible=true;
+                for(unsigned j=0;j<3;++j){
+                    const auto& src=source[n+j];
+                    for(float f:src.pos)if(!std::isfinite(f))return false;
+                    for(float f:src.uv)if(!std::isfinite(f))return false;
+                    for(float f:src.uvNext)if(!std::isfinite(f))return false;
+                    for(float f:src.color)if(!std::isfinite(f))return false;
+                    if(!std::isfinite(src.frameBlend))return false;
+                    const Vec local=stereoSourceLocal(src,frame.sourceFar);
+                    const Vec world=screen.pose.pos+rotate(screen.pose.rot,local);
+                    const auto clip=cinemaTransform(*proj,
+                        cinemaTransform(camera,{world.x,world.y,world.z,1.f}));
+                    for(float c:clip)if(!std::isfinite(c))return false;
+                    if(clip[3]<.06f)visible=false;
+                    triangle[j]={clip,src.uv[0],src.uv[1],
+                        {src.color[0],src.color[1],src.color[2],src.color[3]},
+                        {src.uvNext[0],src.uvNext[1]},src.frameBlend};
+                }
+                if(visible)vertices.insert(vertices.end(),triangle.begin(),triangle.end());
             }
             draw.count[eye][kind]=static_cast<uint32_t>(vertices.size())-draw.first[eye][kind];
         }
