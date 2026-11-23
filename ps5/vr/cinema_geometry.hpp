@@ -10,6 +10,8 @@ struct CinemaScreen {
 struct CinemaVertex {
     std::array<float,4> clip;
     float u{},v{};
+    // Optional original sprite tint. The ordinary cinema remains white.
+    float color[4]{1.f,1.f,1.f,1.f};
 };
 inline bool validTrackedPose(Pose p) {
     const auto q=p.rot;
