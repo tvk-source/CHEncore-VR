@@ -108,6 +108,15 @@ inline bool stereoHighwayGeometry(
 struct StereoSourceDraw {
     uint32_t first[2][3]{},count[2][3]{}; // [eye][0 board / 1 highway / 2 guitar]
 };
+// The source chart extends tens of game units into the distance. Alpha 5's
+// 0.59 m vertical rise compressed the track to roughly half its visual height.
+// Preserve the original source depth ordering, but give the neck a comfortable
+// full-height stereo incline with its far tip above the eye-level center.
+inline Vec stereoSourceLocal(const StereoSourceVertex& src,float sourceFar) {
+    const float along=std::clamp(-src.pos[2]/sourceFar,0.f,1.f);
+    return {.34f*src.pos[0],-.80f+1.37f*along+.085f*src.pos[1],
+            .87f-1.12f*along-.02f*src.pos[1]};
+}
 inline bool stereoSourceGeometry(const StereoHighwayFrame& frame,const CinemaScreen& screen,
     const Eye (&eyes)[2],std::vector<CinemaVertex>& vertices,StereoSourceDraw& draw)
 {
@@ -127,11 +136,9 @@ inline bool stereoSourceGeometry(const StereoHighwayFrame& frame,const CinemaScr
                 for(float f:src.pos)if(!std::isfinite(f))return false;
                 for(float f:src.uv)if(!std::isfinite(f))return false;
                 for(float f:src.color)if(!std::isfinite(f))return false;
-                const float along=std::clamp(-src.pos[2]/frame.sourceFar,0.f,1.f);
-                // Native lane centres are x=-2..2. PC world geometry is
-                // scaled into a comfortable head-independent VR fretboard.
-                const Vec local{.34f*src.pos[0],-.73f+.59f*along+.10f*src.pos[1],
-                                .82f-.68f*along-.02f*src.pos[1]};
+                // Reuse the full-scale rising track transform for every
+                // source-authored piece: board, notes, receptors, highway.
+                const Vec local=stereoSourceLocal(src,frame.sourceFar);
                 const Vec world=screen.pose.pos+rotate(screen.pose.rot,local);
                 const auto clip=cinemaTransform(*proj,
                     cinemaTransform(camera,{world.x,world.y,world.z,1.f}));
