@@ -298,37 +298,41 @@ struct CinemaRenderer {
         if(sourceActive){
             if(!stereoSourceGeometry(live,screen,eyes,verts,sourceDraw))
                 throw std::runtime_error("invalid source stereo geometry");
+            const VkImageView fxAtlas=stereoAtlasViews.guitarFx?
+                stereoAtlasViews.guitarFx:stereoAtlasViews.guitar;
             if(r.configuredGuitar!=stereoAtlasViews.guitar||r.configuredHighway!=stereoAtlasViews.highway||
-               r.configuredBoard!=stereoAtlasViews.board||r.configuredBoardSampler!=stereoAtlasViews.boardSampler){
-                VkDescriptorImageInfo images[3]={
+               r.configuredBoard!=stereoAtlasViews.board||r.configuredBoardSampler!=stereoAtlasViews.boardSampler||
+               r.configuredGuitarFx!=fxAtlas){
+                VkDescriptorImageInfo images[4]={
                     {stereoAtlasViews.boardSampler,stereoAtlasViews.board,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
                     {r.sampler,stereoAtlasViews.highway,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
-                    {r.sampler,stereoAtlasViews.guitar,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}};
-                VkWriteDescriptorSet writes[3]{};
-                const VkDescriptorSet sets[3]={r.boardSet,r.highwaySet,r.guitarSet};
-                for(int j=0;j<3;++j){
+                    {r.sampler,stereoAtlasViews.guitar,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL},
+                    {r.sampler,fxAtlas,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}};
+                VkWriteDescriptorSet writes[4]{};
+                const VkDescriptorSet sets[4]={r.boardSet,r.highwaySet,r.guitarSet,r.guitarFxSet};
+                for(int j=0;j<4;++j){
                     writes[j].sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
                     writes[j].dstSet=sets[j];writes[j].dstBinding=0;
                     writes[j].descriptorCount=1;
                     writes[j].descriptorType=VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
                     writes[j].pImageInfo=&images[j];
                 }
-                vkUpdateDescriptorSets(device,3,writes,0,nullptr);
+                vkUpdateDescriptorSets(device,4,writes,0,nullptr);
                 r.configuredHighway=stereoAtlasViews.highway;
                 r.configuredGuitar=stereoAtlasViews.guitar;
                 r.configuredBoard=stereoAtlasViews.board;
+                r.configuredGuitarFx=fxAtlas;
                 r.configuredBoardSampler=stereoAtlasViews.boardSampler;
             }
-            // Native gameplay has additional UI rendered by Encore's meter
-            // pipeline and ImGui, not by the guitar/highway texture atlases.
-            // Keep these existing dynamic pixels by projecting ONLY the two
-            // peripheral HUD regions. The centre screen/gameplay is omitted.
-            // Crops are proportional to Encore's original 16:9 output:
-            // health/SP left; animated score/stars/song-progress right.
-            // The board remains purely source-geometry stereo.
-            const CinemaHudPanel hudPanels[2]={
-                { -1.48f,-.83f,-.71f,.47f,-.06f, .00f,.08f,.29f,.94f },
-                {  .83f,1.48f,-.71f,.47f,-.06f, .71f,.08f,1.00f,.94f }
+            // Reuse only the original score, health/power and song widgets.
+            // Bring the HUD toward the player to improve effective pixel
+            // density without enlarging low-resolution sprites further.
+            // A dedicated keyed shader drops dark areas from these crops.
+            // The middle screen/neck is never rendered as a cinema overlay.
+            const CinemaHudPanel hudPanels[3]={
+                { -1.57f,-.84f,-.62f,.51f,.35f, .00f,.12f,.29f,.94f },
+                {  .84f,1.57f,-.62f,.51f,.35f, .71f,.12f,1.00f,.94f },
+                {  -.93f,.93f,.76f,1.08f,.19f, .29f,.01f,.71f,.16f }
             };
             for(int eye=0;eye<2;++eye){
                 hudFirst[eye]=static_cast<uint32_t>(verts.size());
@@ -370,17 +374,18 @@ struct CinemaRenderer {
             if(sourceActive){
                 // In active five-fret gameplay the flat source is not displayed.
                 vkCmdBindPipeline(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.atlasPipeline);
-                for(int kind=0;kind<3;++kind){
+                for(int kind=0;kind<5;++kind){
                     if(!sourceDraw.count[i][kind])continue;
-                    const VkDescriptorSet atlas=kind==0?r.boardSet:kind==1?r.highwaySet:r.guitarSet;
+                    // Original layer ordering: background board, highway,
+                    // source sustain tails, rounded guitar notes/receptors,
+                    // and the genuine hit-effect animation atlas.
+                    const VkDescriptorSet atlas=kind==0?r.boardSet:kind==1?r.highwaySet:
+                        kind==4?r.guitarFxSet:r.guitarSet;
                     vkCmdBindDescriptorSets(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.layout,0,1,&atlas,0,nullptr);
                     vkCmdDraw(r.cmd,sourceDraw.count[i][kind],1,sourceDraw.first[i][kind],0);
                 }
-                // Draw real PC HUD pixels on two independent side panels.
-                // No duplicate game screen, score reconstruction or second
-                // synthetic song clock. Menus still use the ordinary cinema.
                 if(hudCount[i]){
-                    vkCmdBindPipeline(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.pipeline);
+                    vkCmdBindPipeline(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.hudPipeline);
                     vkCmdBindDescriptorSets(r.cmd,VK_PIPELINE_BIND_POINT_GRAPHICS,r.layout,0,1,&r.set,0,nullptr);
                     vkCmdDraw(r.cmd,hudCount[i],1,hudFirst[i],0);
                 }
@@ -571,10 +576,11 @@ bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue q
             const bool atlasReady=!live.board.empty()&&!live.highway.empty()&&!live.guitar.empty()&&
                 stereoAtlasViews.guitar&&stereoAtlasViews.highway&&stereoAtlasViews.board&&
                 stereoAtlasViews.boardSampler;
-            say("VR_STEREO mode=%s hud=%s live_gems=%u source_board=%zu source_highway=%zu source_guitar=%zu",
+            say("VR_STEREO mode=%s hud=%s live_gems=%u board=%zu highway=%zu sustain=%zu guitar=%zu fx=%zu",
                 atlasReady?"SOURCE_ATLAS":"CINEMA_FALLBACK",
-                atlasReady?"PC_SIDE_PANELS":"CINEMA",
-                live.count,live.board.size(),live.highway.size(),live.guitar.size());
+                atlasReady?"KEYED_SIDE_AND_TOP":"CINEMA",
+                live.count,live.board.size(),live.highway.size(),live.sustain.size(),
+                live.guitar.size(),live.effects.size());
         }
         psvr2_note_gpu(psvr2_now_us()-gpu);
         if(native.frame){
