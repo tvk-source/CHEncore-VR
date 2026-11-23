@@ -432,6 +432,17 @@ int main(int argc,char** argv)
 	const bool startupLog=encore_startup::begin(PS5_TITLE_NAME);
 #endif
 	platform_init(PS5_TITLE_NAME);
+#if defined(ENCORE_VR_CINEMA)
+    // Unambiguous startup identity: an old cinema binary cannot print this.
+    // Use the configured source revision, never an updater version number.
+    say("VR_BUILD_ALPHA5_ATLAS_STEREO source=%s",
+#ifdef ENCORE_VR_SOURCE_REV
+        ENCORE_VR_SOURCE_REV
+#else
+        "unknown"
+#endif
+    );
+#endif
 #if !defined(PS5_HOST_REFERENCE) && !defined(ENCORE_VR_CINEMA)
 	encore_boot_application_runtime();
 	if(const char* root=encore_application_resource_root();root && *root)vks::tools::resourcePath=root;
