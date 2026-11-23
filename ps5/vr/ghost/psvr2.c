@@ -2032,8 +2032,12 @@ int sceVideoOutGetVblankStatus(int handle, void *status);
 int sceVideoOutGetFlipStatus(int handle, void *status);
 #if defined(ENCORE_VR_CINEMA)
 void *psvr2_cinema_alloc(size_t bytes){
-    const size_t low=2u*1024u*1024u*4u,high=2u*1440u*1440u*4u;
-    return bytes==low||bytes==high?direct_alloc(bytes,0x10000):NULL;
+    // Four registered buffers, never recycled until title closure. Support
+    // exact bounded eye dimensions only; do not silently guess an allocation.
+    const size_t low=2u*1024u*1024u*4u;
+    const size_t med=2u*1440u*1440u*4u;
+    const size_t high=2u*1920u*1920u*4u;
+    return bytes==low||bytes==med||bytes==high?direct_alloc(bytes,0x10000):NULL;
 }
 int psvr2_cinema_flip(uint64_t *shown){uint64_t status[32]={0};if(!H.active||!shown)return -1;int rc=sceVideoOutGetFlipStatus(H.vh,status);*shown=status[3];return rc;}
 #endif

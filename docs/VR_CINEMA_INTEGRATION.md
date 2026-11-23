@@ -198,3 +198,29 @@ Sense Y -> Triangle (blue), right Sense A -> Cross (green), right
 Sense B -> Square (yellow), left grip -> L1 (orange). Independent
 per-button tests added. The original game's custom fret bindings and
 drum profiles may have different semantics and are not overridden.
+
+## Sharp-cinema Alpha 3 quality comparison
+Alpha 2's 1440x1440 headset frames are steady (60 FPS/120 Hz,
+reported compositor GPU 3.5–3.8 ms, queue-full/errors zero), but the
+user reports blurry text. The game itself still rendered at 1920x1080
+in Alpha 2, so increasing eye dimensions alone could not create more
+original UI detail. Alpha 3 defaults to a 2560x1440 game source and
+1920x1920 per eye (3840x1920 RGBA SBS). This is an experimental
+4 x ~29.5 MiB direct-buffer allocation and must pass hardware
+registration/latency tests before being considered stable. Game menus
+are laid out in source-independent 1920x1080 coordinates and scaled by
+the existing ImGui fitScale. The world-screen physical dimensions and
+distance are unchanged to isolate the quality variable. Hardware
+registration is not guaranteed. The HMD physical panel resolution and
+screen angular size remain limiting factors; no claim of full optical
+panel resolution or 3D note geometry.
+
+Quality fallback builds:
+    ENCORE_CINEMA_EYE_PIXELS=1440 ENCORE_CINEMA_SOURCE_HEIGHT=1080 bash ps5/tools/build-cinema-alpha.sh
+Mixed diagnostic to identify source vs headset bottleneck:
+    ENCORE_CINEMA_EYE_PIXELS=1440 ENCORE_CINEMA_SOURCE_HEIGHT=1440 bash ps5/tools/build-cinema-alpha.sh
+
+Host screenshot reference is unchanged at 1024x1024 per eye.
+The five-minute stop, firmware 7.61 gate, unmodified native V12 probe,
+no-distribution personal assets and fail-closed retirement heuristics
+remain mandatory. Revert if any visual instability appears.

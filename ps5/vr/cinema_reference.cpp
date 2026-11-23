@@ -21,10 +21,10 @@
 namespace {
 #if defined(ENCORE_VR_CINEMA)
 #ifndef ENCORE_CINEMA_EYE_PIXELS
-#define ENCORE_CINEMA_EYE_PIXELS 1440
+#define ENCORE_CINEMA_EYE_PIXELS 1920
 #endif
 constexpr uint32_t eyeSize=ENCORE_CINEMA_EYE_PIXELS;
-static_assert(eyeSize==1024||eyeSize==1440,"only tested/bounded output sizes");
+static_assert(eyeSize==1024||eyeSize==1440||eyeSize==1920,"only bounded output sizes");
 #else
 constexpr uint32_t eyeSize=1024;
 #endif
@@ -369,8 +369,8 @@ bool encoreCinemaNativeFrame(VkPhysicalDevice physical,VkDevice device,VkQueue q
             }
             if(!native.screen)throw std::runtime_error("tracking origin did not settle");
             native.start=psvr2_now_us();native.initialized=true;
-            say("VR_CINEMA ready 1080p game / %ux%u per eye, 60 FPS / 120 Hz output; DualSense or Sense; hold right Options or both Sense grips >=1s to recenter",
-                eyeSize,eyeSize);
+            say("VR_CINEMA ready source=%ux%u / eye=%ux%u, 60 FPS / 120 Hz; DualSense or Sense; hold right Options or both Sense grips >=1s to recenter",
+                extent.width,extent.height,eyeSize,eyeSize);
         }
         if(!psvr2_worn()||psvr2_exit_requested()||psvr2_now_us()-native.start>=300000000ull)
             throw std::runtime_error("wear/exit/5-minute alpha limit");

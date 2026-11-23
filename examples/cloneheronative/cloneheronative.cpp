@@ -434,7 +434,14 @@ public:
     bool displayPacingApplied{};
     void inspectOutputResolution() {
 #if defined(ENCORE_VR_CINEMA)
-        width=1920;height=1080;return;
+#ifndef ENCORE_CINEMA_SOURCE_HEIGHT
+#define ENCORE_CINEMA_SOURCE_HEIGHT 1440
+#endif
+        static_assert(ENCORE_CINEMA_SOURCE_HEIGHT==1080 || ENCORE_CINEMA_SOURCE_HEIGHT==1440,
+            "only bounded 16:9 game source heights");
+        width=(ENCORE_CINEMA_SOURCE_HEIGHT*16)/9;
+        height=ENCORE_CINEMA_SOURCE_HEIGHT;
+        return;
 #elif !defined(PS5_HOST_REFERENCE)
         // One-launch diagnostic, gated by the bounded console test runner.
         if(ps5.frameBudget)if(FILE* flag=std::fopen("/app0/ime-1080-test.txt","r")) {
