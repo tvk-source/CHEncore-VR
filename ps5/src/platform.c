@@ -188,6 +188,7 @@ static struct pad_player_state *pad_state(int player);
 static int cinema_virtual;
 static struct pad_reading cinema_virtual_sample;
 static int cinema_last_logged=-1;
+static uint32_t cinema_last_frets=0;
 static void cinema_bridge_input(void){
     psvr2_cinema_input in={0};
     const int available=psvr2_cinema_input_snapshot(&in);
@@ -196,7 +197,7 @@ static void cinema_bridge_input(void){
         if(available)say("VR_CINEMA Sense input bridge active (short right Options=menu, short left Create=touchpad, hold Options or both grips=recentre)");
         cinema_last_logged=available;
     }
-    if(!available)return;
+    if(!available){cinema_last_frets=0;return;}
     struct pad_player_state* s=pad_state(0);
     if(s&&s->connected&&s->instrument)return; // never corrupt original physical instrument
     struct pad_reading r={0};
@@ -210,6 +211,14 @@ static void cinema_bridge_input(void){
         r.timestamp_us=s->last.timestamp_us;
     }
     if(!encore_cinema_merge(&in,&r))return;
+    // Edge-only diagnostic: confirm real Sense buttons reached the gamepad
+    // bridge, independently of whether Encore's gamepad-mode judges a hit.
+    const uint32_t frets=r.buttons&(PAD_CROSS|PAD_CIRCLE|PAD_SQUARE|PAD_TRIANGLE|PAD_L1);
+    if(frets!=cinema_last_frets){
+        say("VR_SENSE mapped_frets=0x%02x left_raw=0x%02x right_raw=0x%02x",
+            (unsigned)frets,(unsigned)in.side[0].buttons,(unsigned)in.side[1].buttons);
+        cinema_last_frets=frets;
+    }
     if(s&&s->connected){
         s->last.buttons=r.buttons;
         s->last.left_x=r.left_x;s->last.left_y=r.left_y;
