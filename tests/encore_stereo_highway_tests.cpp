@@ -65,7 +65,33 @@ int main(){
     const auto& a=texturedVerts[source.first[0][2]];
     const auto& b=texturedVerts[source.first[1][2]];
     assert(std::abs(a.clip[0]/a.clip[3]-b.clip[0]/b.clip[3])>.005f);
+    // Alpha 6: the far tip must fill the upper part of the world-space
+    // board rather than ending half-way up the view.
+    StereoSourceVertex near{},far{};
+    near.pos[2]=0.f;
+    far.pos[2]=-textured.sourceFar;
+    const auto nearPoint=stereoSourceLocal(near,textured.sourceFar);
+    const auto farPoint=stereoSourceLocal(far,textured.sourceFar);
+    assert(farPoint.y-nearPoint.y>1.25f);
+    assert(farPoint.z<nearPoint.z);
+    // Alpha 6 HUD: original game pixels projected only into left/right
+    // peripheral panels, not into a second flat gameplay screen.
+    CinemaHudPanel leftHud{-1.48f,-.83f,-.71f,.47f,-.06f,0.f,.08f,.29f,.94f};
+    CinemaHudPanel rightHud{.83f,1.48f,-.71f,.47f,-.06f,.71f,.08f,1.f,.94f};
+    const auto leftPanel=cinemaHudPanelVertices(*screen,eyes[0],leftHud);
+    const auto rightPanel=cinemaHudPanelVertices(*screen,eyes[0],rightHud);
+    assert(leftPanel&&rightPanel);
+    assert((*leftPanel)[0].u==0.f&&(*leftPanel)[0].v==.08f);
+    assert((*rightPanel)[0].u==.71f&&(*rightPanel)[0].v==.08f);
+    const auto leftEyeHud=cinemaHudPanelVertices(*screen,eyes[0],rightHud);
+    const auto rightEyeHud=cinemaHudPanelVertices(*screen,eyes[1],rightHud);
+    assert(leftEyeHud&&rightEyeHud);
+    const auto& l=(*leftEyeHud)[0];
+    const auto& r=(*rightEyeHud)[0];
+    assert(std::abs(l.clip[0]/l.clip[3]-r.clip[0]/r.clip[3])>.005f);
+    rightHud.u0=-.01f;
+    assert(!cinemaHudPanelVertices(*screen,eyes[0],rightHud));
     textured.sourceFar=0.f;
     assert(!stereoSourceGeometry(textured,*screen,eyes,texturedVerts,source));
-    std::puts("STEREO_HIGHWAY_TEST PASS live gems, original UV/tint, source geometry, binocular depth, invalid input");
+    std::puts("STEREO_HIGHWAY_TEST PASS full-height track, original UV/tint, stereo HUD crops, binocular depth, invalid input");
 }
