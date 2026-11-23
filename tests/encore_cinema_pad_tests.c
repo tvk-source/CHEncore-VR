@@ -30,7 +30,7 @@ int main(void){
                 {PSVR2_BTN_X,PSVR2_BTN_Y},{PSVR2_BTN_A,PSVR2_BTN_B}
             };
             const uint32_t mapped[2][2]={
-                {PAD_CIRCLE,PAD_TRIANGLE},{PAD_CROSS,PAD_SQUARE}
+                {PAD_CROSS,PAD_CIRCLE},{PAD_SQUARE,PAD_TRIANGLE}
             };
             one.side[side].buttons=physical[side][n];
             struct pad_reading got=neutral();
@@ -51,6 +51,7 @@ int main(void){
     assert(encore_cinema_trigger(INFINITY)==0);
     assert(encore_cinema_trigger(-INFINITY)==0);
     assert(encore_cinema_axis(2.f,0)==255);
-    puts("CINEMA_PAD_TEST PASS left Red/Blue, right Green/Yellow, grip Orange, analog, menus, original-pad merge");
+    assert((r.buttons&(PAD_L1|PAD_R1))==(PAD_L1|PAD_R1));
+    puts("CINEMA_PAD_TEST PASS left Green/Red, right Yellow/Blue/Orange, analog, menus, original-pad merge");
     return 0;
 }

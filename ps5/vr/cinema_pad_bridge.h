@@ -27,11 +27,10 @@ static inline int encore_cinema_merge(const psvr2_cinema_input *v,struct pad_rea
     const psvr2_cinema_hand *l=&v->side[0],*h=&v->side[1];
     uint32_t b=0;
     if(l->connected) {
-        // Default five-fret mappings: RED = Circle (lane 2), BLUE =
-        // Triangle (lane 4). Both accessible from the left Sense pad.
-        if(l->buttons&PSVR2_BTN_X)b|=PAD_CIRCLE;
-        if(l->buttons&PSVR2_BTN_Y)b|=PAD_TRIANGLE;
-        if(l->buttons&PSVR2_BTN_GRIP)b|=PAD_L1;
+        // Left hand: green (lane 0) and red (lane 1).
+        if(l->buttons&PSVR2_BTN_X)b|=PAD_CROSS;
+        if(l->buttons&PSVR2_BTN_Y)b|=PAD_CIRCLE;
+        if(l->buttons&PSVR2_BTN_GRIP)b|=PAD_R1;
         if(l->buttons&PSVR2_BTN_STICK)b|=PAD_L3;
         if(l->buttons&PSVR2_BTN_MENU)b|=PAD_TOUCH_PAD;
         uint8_t t=encore_cinema_trigger(l->trigger);
@@ -44,11 +43,10 @@ static inline int encore_cinema_merge(const psvr2_cinema_input *v,struct pad_rea
         if(l->stick[0]<-.65f)b|=PAD_LEFT;
     }
     if(h->connected) {
-        // Right hand covers GREEN (Cross) and YELLOW (Square).
-        // The dedicated grip remains the fifth ORANGE (L1) fret.
-        if(h->buttons&PSVR2_BTN_A)b|=PAD_CROSS;
-        if(h->buttons&PSVR2_BTN_B)b|=PAD_SQUARE;
-        if(h->buttons&PSVR2_BTN_GRIP)b|=PAD_R1;
+        // Right hand: yellow (lane 2), blue (lane 3), orange (lane 4).
+        if(h->buttons&PSVR2_BTN_A)b|=PAD_SQUARE;
+        if(h->buttons&PSVR2_BTN_B)b|=PAD_TRIANGLE;
+        if(h->buttons&PSVR2_BTN_GRIP)b|=PAD_L1;
         if(h->buttons&PSVR2_BTN_STICK)b|=PAD_R3;
         if(h->buttons&PSVR2_BTN_MENU)b|=PAD_OPTIONS;
         uint8_t t=encore_cinema_trigger(h->trigger);

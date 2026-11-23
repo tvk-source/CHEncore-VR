@@ -8263,7 +8263,7 @@ if(loadMidiMapping(midiSetupSource,key,mapped)){midiWizard.draft=std::move(mappe
             fprintf(stderr, "[audio] PC UI sound assets could not be loaded\n");
 #endif
         overlayFontPath = rhythm::assets::currentRoot() + "pc_menu/Lato-Regular.ttf";
-        overlayFontSize = 22.0f;
+        overlayFontSize = 22.0f * cinemaFontRaster; // Tiny upper-left diagnostic overlay at native 1440p.
         gameplayNameFont=ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-BoldItalic.ttf").c_str(),pc_gameplay_labels::nameSize*cinemaFontRaster);
         countdownFont=ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Heavy.ttf").c_str(),pc_gameplay_labels::countdownMaxSize*cinemaFontRaster);
         resultsBoldFont=ImGui::GetIO().Fonts->AddFontFromFileTTF((rhythm::assets::currentRoot()+"pc_menu/Lato-Bold.ttf").c_str(),39.0f*cinemaFontRaster);

@@ -231,3 +231,11 @@ otherwise be stretched 1.333x. All eight Lato fonts are now rasterized
 at the source pixel scale; only the window's implicit default font scale
 is compensated to preserve existing menu geometry. Explicit font sizes
 remain in the source-space layout. Host/probe still use a scale of 1.0.
+
+## Alpha 4 user correction
+Guitar board is GREEN RED YELLOW BLUE ORANGE left-to-right. Sense default
+mapping: left X green/Cross, left Y red/Circle, right A yellow/Square,
+right B blue/Triangle, right grip orange/L1. Left grip R1 is reserved
+and may control a separate action. The tiny shared debug/UI font (22px)
+now rasterizes at native source scale as well. Other small labels may still
+come from low-resolution imported bitmaps; they are not magically recreated.
