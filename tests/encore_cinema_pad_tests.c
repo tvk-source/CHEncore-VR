@@ -51,7 +51,21 @@ int main(void){
     assert(encore_cinema_trigger(INFINITY)==0);
     assert(encore_cinema_trigger(-INFINITY)==0);
     assert(encore_cinema_axis(2.f,0)==255);
-    assert((r.buttons&(PAD_L1|PAD_R1))==(PAD_L1|PAD_R1));
+    // Test the fifth orange fret separately; it belongs to RIGHT grip.
+    psvr2_cinema_input orange={0};
+    orange.side[1].connected=1;
+    orange.side[1].buttons=PSVR2_BTN_GRIP;
+    struct pad_reading orange_pad=neutral();
+    assert(encore_cinema_merge(&orange,&orange_pad));
+    assert(orange_pad.buttons==PAD_L1);
+    // Left grip keeps its separate R1 role.
+    orange.side[1].connected=0;
+    orange.side[1].buttons=0;
+    orange.side[0].connected=1;
+    orange.side[0].buttons=PSVR2_BTN_GRIP;
+    orange_pad=neutral();
+    assert(encore_cinema_merge(&orange,&orange_pad));
+    assert(orange_pad.buttons==PAD_R1);
     puts("CINEMA_PAD_TEST PASS left Green/Red, right Yellow/Blue/Orange, analog, menus, original-pad merge");
     return 0;
 }
