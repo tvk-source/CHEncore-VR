@@ -20,6 +20,24 @@ int main(void){
     assert((r.buttons&(PAD_SQUARE|PAD_TRIANGLE|PAD_CROSS|PAD_CIRCLE|PAD_L1|PAD_R1|PAD_UP|PAD_LEFT))==
              (PAD_SQUARE|PAD_TRIANGLE|PAD_CROSS|PAD_CIRCLE|PAD_L1|PAD_R1|PAD_UP|PAD_LEFT));
     assert(r.l2==200&&r.r2==255);
+    // Each button must address the requested fret, not merely some face
+    // button. Check independent presses and simultaneous chords.
+    for(int side=0;side<2;++side){
+        for(int n=0;n<2;++n){
+            psvr2_cinema_input one={0};
+            one.side[side].connected=1;
+            const uint32_t physical[2][2]={
+                {PSVR2_BTN_X,PSVR2_BTN_Y},{PSVR2_BTN_A,PSVR2_BTN_B}
+            };
+            const uint32_t mapped[2][2]={
+                {PAD_CIRCLE,PAD_TRIANGLE},{PAD_CROSS,PAD_SQUARE}
+            };
+            one.side[side].buttons=physical[side][n];
+            struct pad_reading got=neutral();
+            assert(encore_cinema_merge(&one,&got));
+            assert(got.buttons==mapped[side][n]);
+        }
+    }
     assert(r.left_y<30&&r.right_x<40);
     in.side[0].buttons=PSVR2_BTN_MENU;in.side[1].buttons=PSVR2_BTN_MENU;
     r=neutral();assert(encore_cinema_merge(&in,&r));
@@ -29,6 +47,6 @@ int main(void){
     assert(encore_cinema_axis(NAN,0)==128);
     assert(encore_cinema_trigger(NAN)==0);
     assert(encore_cinema_axis(2.f,0)==255);
-    puts("CINEMA_PAD_TEST PASS Sense face, grip, analog, D-pad, menu tap, disconnection, original-pad merging");
+    puts("CINEMA_PAD_TEST PASS left Red/Blue, right Green/Yellow, grip Orange, analog, menus, original-pad merge");
     return 0;
 }

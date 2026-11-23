@@ -186,3 +186,15 @@ or the experimental V12 4-slot age gate. Increased output size is unverified
 on hardware; do not continue after registration failure or visual instability.
 The normal and V12 probe builds are unaffected. Test includes portable C
 assertions for pure input mapping.
+
+## Alpha 2 hardware feedback, revised five-fret mapping
+Alpha 2 ran multiple 60 FPS sessions at 1440 eye; telemetry showed
+zero queue-full and reported errors, 3.5–3.8 ms GPU compositor.
+Both Sense controllers worked but user requested physical left hand
+on RED/BLUE notes of the board. For the original game's default
+five-fret mapping (green Cross, red Circle, yellow Square, blue
+Triangle, orange L1), change left Sense X -> Circle (red), left
+Sense Y -> Triangle (blue), right Sense A -> Cross (green), right
+Sense B -> Square (yellow), left grip -> L1 (orange). Independent
+per-button tests added. The original game's custom fret bindings and
+drum profiles may have different semantics and are not overridden.
