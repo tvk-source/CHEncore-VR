@@ -27,7 +27,7 @@ namespace {
 #endif
 constexpr uint32_t eyeSize=ENCORE_CINEMA_EYE_PIXELS;
 static_assert(eyeSize==1024||eyeSize==1440||eyeSize==1920,"only bounded output sizes");
-struct StereoAtlasViews { VkImageView guitar{},highway{},board{};VkSampler boardSampler{}; };
+struct StereoAtlasViews { VkImageView guitar{},highway{},board{},guitarFx{};VkSampler boardSampler{}; };
 StereoAtlasViews stereoAtlasViews{};
 #else
 constexpr uint32_t eyeSize=1024;
@@ -47,10 +47,10 @@ struct Resources {
     VkDescriptorSet set{};VkPipelineLayout layout{};VkRenderPass pass{};
     VkFramebuffer framebuffer{};VkPipeline pipeline{};VkShaderModule vert{},frag{};
 #if defined(ENCORE_VR_CINEMA)
-    VkPipeline atlasPipeline{};
-    VkShaderModule atlasVert{},atlasFrag{};
-    VkDescriptorSet guitarSet{},highwaySet{},boardSet{};
-    VkImageView configuredGuitar{},configuredHighway{},configuredBoard{};
+    VkPipeline atlasPipeline{},hudPipeline{};
+    VkShaderModule atlasVert{},atlasFrag{},hudFrag{};
+    VkDescriptorSet guitarSet{},highwaySet{},boardSet{},guitarFxSet{};
+    VkImageView configuredGuitar{},configuredHighway{},configuredBoard{},configuredGuitarFx{};
     VkSampler configuredBoardSampler{};
 #endif
     VkCommandPool cmdPool{};VkCommandBuffer cmd{};VkFence fence{};
@@ -64,8 +64,10 @@ struct Resources {
         if(pipeline)vkDestroyPipeline(d,pipeline,nullptr);
 #if defined(ENCORE_VR_CINEMA)
         if(atlasPipeline)vkDestroyPipeline(d,atlasPipeline,nullptr);
+        if(hudPipeline)vkDestroyPipeline(d,hudPipeline,nullptr);
         if(atlasVert)vkDestroyShaderModule(d,atlasVert,nullptr);
         if(atlasFrag)vkDestroyShaderModule(d,atlasFrag,nullptr);
+        if(hudFrag)vkDestroyShaderModule(d,hudFrag,nullptr);
 #endif
         if(framebuffer)vkDestroyFramebuffer(d,framebuffer,nullptr);
         if(pass)vkDestroyRenderPass(d,pass,nullptr);
@@ -132,8 +134,8 @@ struct Resources {
 }
 #if defined(ENCORE_VR_CINEMA)
 // The original game owns these sampled images; they remain GPU-resident.
-void encoreCinemaSetAtlasViews(VkImageView guitar,VkImageView highway,VkImageView board,VkSampler boardSampler){
-    stereoAtlasViews={guitar,highway,board,boardSampler};
+void encoreCinemaSetAtlasViews(VkImageView guitar,VkImageView highway,VkImageView board,VkSampler boardSampler,VkImageView guitarFx){
+    stereoAtlasViews={guitar,highway,board,guitarFx,boardSampler};
 }
 #endif
 
@@ -161,7 +163,7 @@ struct CinemaRenderer {
 #if defined(ENCORE_VR_CINEMA)
         // Source sprites: three atlases per eye. HUD: two cropped, original
         // peripheral gameplay UI panels per eye (4 panels * 6 vertices).
-        r.buffer(r.vertices,sizeof(CinemaVertex)*(12+6*kStereoAssetMaxVertices+24),
+        r.buffer(r.vertices,sizeof(CinemaVertex)*(12+10*kStereoAssetMaxVertices+36),
                  VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
 #else
         r.buffer(r.vertices,sizeof(CinemaVertex)*12,VK_BUFFER_USAGE_VERTEX_BUFFER_BIT);
@@ -184,13 +186,13 @@ struct CinemaRenderer {
         sli.bindingCount=1;sli.pBindings=&binding;
         CHECK(vkCreateDescriptorSetLayout(device,&sli,nullptr,&r.setLayout));
         #if defined(ENCORE_VR_CINEMA)
-        VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,4};
+        VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,5};
 #else
         VkDescriptorPoolSize poolSize{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,1};
 #endif
         VkDescriptorPoolCreateInfo dpi{};dpi.sType=VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
         #if defined(ENCORE_VR_CINEMA)
-        dpi.maxSets=4;
+        dpi.maxSets=5;
 #else
         dpi.maxSets=1;
 #endif
@@ -203,6 +205,7 @@ struct CinemaRenderer {
         CHECK(vkAllocateDescriptorSets(device,&dai,&r.guitarSet));
         CHECK(vkAllocateDescriptorSets(device,&dai,&r.highwaySet));
         CHECK(vkAllocateDescriptorSets(device,&dai,&r.boardSet));
+        CHECK(vkAllocateDescriptorSets(device,&dai,&r.guitarFxSet));
 #endif
         VkDescriptorImageInfo di{r.sampler,r.source.view,VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL};
         VkWriteDescriptorSet write{};write.sType=VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
@@ -233,11 +236,13 @@ struct CinemaRenderer {
         stages[0].stage=VK_SHADER_STAGE_VERTEX_BIT;stages[0].module=r.vert;
         stages[1].stage=VK_SHADER_STAGE_FRAGMENT_BIT;stages[1].module=r.frag;
         VkVertexInputBindingDescription vb{0,sizeof(CinemaVertex),VK_VERTEX_INPUT_RATE_VERTEX};
-        VkVertexInputAttributeDescription va[3]={{0,0,VK_FORMAT_R32G32B32A32_SFLOAT,offsetof(CinemaVertex,clip)},
+        VkVertexInputAttributeDescription va[5]={{0,0,VK_FORMAT_R32G32B32A32_SFLOAT,offsetof(CinemaVertex,clip)},
                                                 {1,0,VK_FORMAT_R32G32_SFLOAT,offsetof(CinemaVertex,u)},
-                                                {2,0,VK_FORMAT_R32G32B32A32_SFLOAT,offsetof(CinemaVertex,color)}};
+                                                {2,0,VK_FORMAT_R32G32B32A32_SFLOAT,offsetof(CinemaVertex,color)},
+                                                {3,0,VK_FORMAT_R32G32_SFLOAT,offsetof(CinemaVertex,uvNext)},
+                                                {4,0,VK_FORMAT_R32_SFLOAT,offsetof(CinemaVertex,frameBlend)}};
         VkPipelineVertexInputStateCreateInfo vi{};vi.sType=VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
-        vi.vertexBindingDescriptionCount=1;vi.pVertexBindingDescriptions=&vb;vi.vertexAttributeDescriptionCount=3;vi.pVertexAttributeDescriptions=va;
+        vi.vertexBindingDescriptionCount=1;vi.pVertexBindingDescriptions=&vb;vi.vertexAttributeDescriptionCount=5;vi.pVertexAttributeDescriptions=va;
         VkPipelineInputAssemblyStateCreateInfo ia{};ia.sType=VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
         ia.topology=VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
         VkPipelineViewportStateCreateInfo vp{};vp.sType=VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;vp.viewportCount=vp.scissorCount=1;
@@ -267,6 +272,11 @@ struct CinemaRenderer {
         ba.dstAlphaBlendFactor=VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
         ba.alphaBlendOp=VK_BLEND_OP_ADD;
         CHECK(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&pi,nullptr,&r.atlasPipeline));
+        // Separate translucent HUD shader: black source pixels disappear
+        // instead of becoming black rectangles around score and meters.
+        r.hudFrag=r.shader(shaders+"/hud.frag.spv");
+        stages[0].module=r.vert;stages[1].module=r.hudFrag;
+        CHECK(vkCreateGraphicsPipelines(device,VK_NULL_HANDLE,1,&pi,nullptr,&r.hudPipeline));
 #endif
         VkCommandPoolCreateInfo ci{};ci.sType=VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;ci.queueFamilyIndex=family;
         CHECK(vkCreateCommandPool(device,&ci,nullptr,&r.cmdPool));
