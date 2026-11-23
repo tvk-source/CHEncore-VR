@@ -17,6 +17,7 @@ FILES = (
     "sce_module/encore-engine.prx",
     "shaders/cinema/atlas.vert.spv",
     "shaders/cinema/atlas.frag.spv",
+    "shaders/cinema/hud.frag.spv",
 )
 
 
