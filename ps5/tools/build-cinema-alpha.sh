@@ -21,7 +21,7 @@ ${CXX:-c++} -std=c++20 -O2 -Wall -Wextra -Werror -I"$root" tests/encore_stereo_h
 bash ps5/tools/cinema-reference.sh
 ENCORE_VR_PROBE=0 ENCORE_VR_CINEMA=1 bash ps5/tools/build.sh
 app="$root/dist-vr-cinema/PPSA98743"
-for item in eboot.bin sce_module/encore-engine.prx sce_sys/param.json shaders/cinema/cinema.vert.spv shaders/cinema/cinema.frag.spv shaders/cinema/highway3d.frag.spv assets/EncoreAssets-v1.encore-assets; do
+for item in eboot.bin sce_module/encore-engine.prx sce_sys/param.json shaders/cinema/cinema.vert.spv shaders/cinema/cinema.frag.spv shaders/cinema/highway3d.frag.spv shaders/cinema/atlas.vert.spv shaders/cinema/atlas.frag.spv assets/EncoreAssets-v1.encore-assets; do
     [[ -s "$app/$item" ]] || { echo "Missing alpha file: $item" >&2; exit 1; }
 done
 echo "Native alpha: $app"
