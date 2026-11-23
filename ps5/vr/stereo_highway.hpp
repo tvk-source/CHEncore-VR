@@ -10,6 +10,12 @@
 namespace encore::vr {
 inline constexpr uint32_t kStereoHighwayNotes=96;
 inline constexpr uint32_t kStereoHighwayMaxVertices=4096;
+inline constexpr uint32_t kStereoAssetMaxVertices=4096; // per texture, before eye duplication
+struct StereoSourceVertex {
+    float pos[3]{};
+    float uv[2]{};
+    float color[4]{1.f,1.f,1.f,1.f};
+};
 struct StereoHighwayNote {
     uint8_t lane{};         // 0..4 = G R Y B O
     float untilHit{};       // seconds on the game's rendered/audio-calibrated timeline
@@ -19,6 +25,9 @@ struct StereoHighwayFrame {
     bool active{};          // only live, unpaused five-fret gameplay
     uint32_t count{};
     std::array<StereoHighwayNote,kStereoHighwayNotes> notes{};
+    float sourceFar{39.35f}; // source game's visible world-space depth
+    std::vector<StereoSourceVertex> highway{}; // PC highway texture UVs/geometry
+    std::vector<StereoSourceVertex> guitar{};  // PC guitar atlas: gems/receptors
 };
 struct StereoHighwayDraw {
     uint32_t first[2]{},count[2]{};
@@ -92,6 +101,48 @@ inline bool stereoHighwayGeometry(
     }
     draw.chartNotes=frame.count;
     return vertices.size()<=kStereoHighwayMaxVertices;
+}
+// Preserve PC geometry, sprite UVs and tints; change only its world placement
+// and the left/right headset projection. The 2D cinema is NOT sampled here.
+struct StereoSourceDraw {
+    uint32_t first[2][2]{},count[2][2]{}; // [eye][0 highway / 1 guitar]
+};
+inline bool stereoSourceGeometry(const StereoHighwayFrame& frame,const CinemaScreen& screen,
+    const Eye (&eyes)[2],std::vector<CinemaVertex>& vertices,StereoSourceDraw& draw)
+{
+    draw={};
+    if(!frame.active)return true;
+    if(!validTrackedPose(screen.pose)||!std::isfinite(frame.sourceFar)||frame.sourceFar<1.f||
+       frame.highway.size()>kStereoAssetMaxVertices||frame.guitar.size()>kStereoAssetMaxVertices)return false;
+    for(int eye=0;eye<2;++eye){
+        if(!validTrackedPose(eyes[eye].pose))return false;
+        const auto proj=projection(eyes[eye].fov,.05f,50.f);
+        if(!proj)return false;
+        const auto camera=view(eyes[eye].pose);
+        for(int kind=0;kind<2;++kind){
+            const auto& source=kind==0?frame.highway:frame.guitar;
+            draw.first[eye][kind]=static_cast<uint32_t>(vertices.size());
+            for(const auto& src:source){
+                for(float f:src.pos)if(!std::isfinite(f))return false;
+                for(float f:src.uv)if(!std::isfinite(f))return false;
+                for(float f:src.color)if(!std::isfinite(f))return false;
+                const float along=std::clamp(-src.pos[2]/frame.sourceFar,0.f,1.f);
+                // Native lane centres are x=-2..2. PC world geometry is
+                // scaled into a comfortable head-independent VR fretboard.
+                const Vec local{.34f*src.pos[0],-.73f+.59f*along+.10f*src.pos[1],
+                                .82f-.68f*along-.02f*src.pos[1]};
+                const Vec world=screen.pose.pos+rotate(screen.pose.rot,local);
+                const auto clip=cinemaTransform(*proj,
+                    cinemaTransform(camera,{world.x,world.y,world.z,1.f}));
+                for(float c:clip)if(!std::isfinite(c))return false;
+                if(clip[3]<.06f)return false;
+                vertices.push_back({clip,src.uv[0],src.uv[1],
+                    {src.color[0],src.color[1],src.color[2],src.color[3]}});
+            }
+            draw.count[eye][kind]=static_cast<uint32_t>(vertices.size())-draw.first[eye][kind];
+        }
+    }
+    return true;
 }
 #if defined(ENCORE_VR_CINEMA)
 void encoreCinemaPublishHighway(const StereoHighwayFrame& frame);
