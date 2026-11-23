@@ -12,4 +12,6 @@ bool encoreCinemaReference(VkPhysicalDevice physical,VkDevice device,VkQueue que
 #if defined(ENCORE_VR_CINEMA)
 bool encoreCinemaNativeFrame(VkPhysicalDevice,VkDevice,VkQueue,uint32_t,VkImage,VkFormat,VkExtent2D,const std::string&);
 void encoreCinemaStop();
+// Source atlas views remain game-owned. Never copy personal image assets into Git.
+void encoreCinemaSetAtlasViews(VkImageView guitar,VkImageView highway);
 #endif
