@@ -26,6 +26,7 @@ struct StereoHighwayFrame {
     uint32_t count{};
     std::array<StereoHighwayNote,kStereoHighwayNotes> notes{};
     float sourceFar{39.35f}; // source game's visible world-space depth
+    std::vector<StereoSourceVertex> board{};   // PC's scrolling highway board
     std::vector<StereoSourceVertex> highway{}; // PC highway texture UVs/geometry
     std::vector<StereoSourceVertex> guitar{};  // PC guitar atlas: gems/receptors
 };
@@ -105,7 +106,7 @@ inline bool stereoHighwayGeometry(
 // Preserve PC geometry, sprite UVs and tints; change only its world placement
 // and the left/right headset projection. The 2D cinema is NOT sampled here.
 struct StereoSourceDraw {
-    uint32_t first[2][2]{},count[2][2]{}; // [eye][0 highway / 1 guitar]
+    uint32_t first[2][3]{},count[2][3]{}; // [eye][0 board / 1 highway / 2 guitar]
 };
 inline bool stereoSourceGeometry(const StereoHighwayFrame& frame,const CinemaScreen& screen,
     const Eye (&eyes)[2],std::vector<CinemaVertex>& vertices,StereoSourceDraw& draw)
@@ -113,14 +114,14 @@ inline bool stereoSourceGeometry(const StereoHighwayFrame& frame,const CinemaScr
     draw={};
     if(!frame.active)return true;
     if(!validTrackedPose(screen.pose)||!std::isfinite(frame.sourceFar)||frame.sourceFar<1.f||
-       frame.highway.size()>kStereoAssetMaxVertices||frame.guitar.size()>kStereoAssetMaxVertices)return false;
+       frame.board.size()>kStereoAssetMaxVertices||frame.highway.size()>kStereoAssetMaxVertices||frame.guitar.size()>kStereoAssetMaxVertices)return false;
     for(int eye=0;eye<2;++eye){
         if(!validTrackedPose(eyes[eye].pose))return false;
         const auto proj=projection(eyes[eye].fov,.05f,50.f);
         if(!proj)return false;
         const auto camera=view(eyes[eye].pose);
-        for(int kind=0;kind<2;++kind){
-            const auto& source=kind==0?frame.highway:frame.guitar;
+        for(int kind=0;kind<3;++kind){
+            const auto& source=kind==0?frame.board:kind==1?frame.highway:frame.guitar;
             draw.first[eye][kind]=static_cast<uint32_t>(vertices.size());
             for(const auto& src:source){
                 for(float f:src.pos)if(!std::isfinite(f))return false;
